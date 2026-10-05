@@ -1,0 +1,194 @@
+﻿road_no,package,vendor,line_manager,activity_id,activity,unit,planned_qty,start_date,end_date
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-01,Six Party Clearance,Job,1.0,10-10-206,2026-10-30
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-02,Excavation,Cum,3200.0,2026-11-02,2026-12-30
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-03,Soil Disposal,Cum,3200.0,2026-11-02,2026-12-30
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-04,Subgrade Preparation,Sqm,3200.0,2027-01-04,2027-01-12
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-05,GSB,Cum,1120.0,2027-01-13,2027-02-28
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-06,WMM,Cum,480.0,2027-02-25,2027-03-30
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-07,DLC,Cum,480.0,2027-03-22,2027-04-05
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-08,RCC Drain,Rmt,400.0,2027-04-01,2028-03-31
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-09,Paver Laying,Sqm,3200.0,2027-04-01,2027-06-30
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-10,Kerb wall,RMT,1.0,2027-06-15,2027-07-30
+1,IBMD Sarpa MRP- Internal Road/Sarpa Road & Culvert(400x8) Paver Road Vendor GSPL Manager- Bibhrat Das,GSPL,Bibhrat Das,R01-11,Drain,RMT,400.0,2027-02-01,2027-05-30
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-01,Vegitation clearance,No,1.0,2026-09-28,2026-09-30
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-02,Six Party Clearance,Job,1.0,2026-10-01,2026-10-10
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-03,Road Diversion(Heap Cutting/Temp Road ),RMT,1.0,2026-10-12,2026-10-31
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-04,Excavation,Cum,20000.0,2026-11-02,2027-02-28
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-05,Soil Disposal,Cum,20000.0,2026-11-02,2027-02-28
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-06,GSB,Cum,2800.0,2027-01-15,2027-03-15
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-07,WMM,Cum,1200.0,2027-02-01,2027-03-30
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-08,DLC,Cum,1200.0,2027-02-15,2027-04-15
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-09,RCC Drain,Rmt,900.0,2026-11-02,2027-04-30
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-10,RCC RoAD,Cum,2840.0,2027-04-15,2027-08-31
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-11,Shuttering,Sqm,6528.0,2027-04-15,2027-08-31
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-12,Reinforcement,MT,148.0,2027-04-15,2027-08-31
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-13,Angle Fixing,MT,8.2,2027-04-15,2027-08-31
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-14,Bitumen Paint,Sqm,700.0,2027-04-15,2027-08-31
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-15,Drain,Mtr,400.0,2027-04-01,2028-03-31
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-16,Salitex Board,Sqmt,52.0,2027-04-15,2027-08-31
+2,PSW peripherals roads/PSW Approach roads(400x 10) Vendor- Balaji Construction Manager- Bibhrat Das,Balaji Construction,Bibhrat Das,R02-17,Kerb wall,RMT,1600.0,2027-08-02,2027-10-30
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-01,Six Party Clearance,Job,1.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-02,Dismantling,Cum,1325.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-03,Excavation,Cum,2200.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-04,Soil Disposal,Cum,3525.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-05,GSB,Cum,480.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-06,WMM,Cum,480.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-07,PCC,Cum,500.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-08,RCC,Cum,1120.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-09,Shuttering,Sqm,725.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-10,Reinforcement,MT,112.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-11,Bitumen Paint,Sqm,710.0,2027-04-01,2028-03-31
+3,SMS-2 Kamag movement at BOF & Conarc/Ramp side(200x16) vendor- Jagdish Techno Venture  Manger- Bibhrat Das,Jagdish Techno Venture,Bibhrat Das,R03-12,Handover,Job,1.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-01,Six Party Clearance,Job,1.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-02,Dismantling,Cum,1325.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-03,Excavation,Cum,2200.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-04,Soil Disposal,Cum,3525.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-05,GSB,Cum,480.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-06,WMM,Cum,480.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-07,PCC,Cum,500.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-08,RCC,Cum,1120.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-09,Shuttering,Sqm,725.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-10,Reinforcement,MT,112.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-11,Bitumen Paint,Sqm,710.0,2027-04-01,2028-03-31
+4,SMS-2 Kamag movement at BOF & Conarc/Briquetting Plant side Vendor Name :- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R04-12,Handover,Job,1.0,2027-04-01,2028-03-31
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-01,Excavation,Cum,8000.0,2026-10-05,2026-12-30
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-02,Soil Disposal,Cum,8000.0,2026-10-05,2026-12-30
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-03,Profile correction,Sqm,3360.0,2026-12-15,2026-12-30
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-04,GSB,Cum,1200.0,2026-10-20,2027-01-15
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-05,WMM,Cum,510.0,2026-10-25,2027-01-30
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-06,DLC,Cum,510.0,2026-11-05,2027-02-15
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-07,PCC,Cum,70.0,2026-11-05,2027-02-15
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-08,RCC(reinforcemnt+shutering),Cum,670.0,2026-11-15,2027-04-20
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-09,Shuttering,Sqm,3000.0,2026-11-15,2027-04-15
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-10,Reinforcement,MT,50.0,2026-11-15,2027-04-15
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-11,Kerb wall,RMT,900.0,2026-12-15,2027-04-30
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-12,Bitumen Paint,Sqm,600.0,2026-11-15,2027-04-20
+5,"RMPP Emergency feeding shed(480x7),Kerbwall - 900 Mtr, Concrete Road vendor name - Jagdish Techno Venture Manager:- Lalit Swain",Jagdish Techno Venture,Lalit Swain,R05-13,Salitex board,Sqm,30.0,2027-03-01,2027-04-30
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-01,Excavation,Cum,850.0,2026-12-01,2027-01-15
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-02,Soil Disposal,Cum,850.0,2026-12-01,2027-01-15
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-03,Profile correction,Sqm,760.0,2027-01-17,2027-01-22
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-04,GSB,Cum,264.0,2027-01-22,2027-02-15
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-05,WMM,Cum,114.0,2027-02-16,2027-02-21
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-06,DLC,Cum,114.0,2027-02-24,2027-02-28
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-07,RCC(reinforcemnt+shutering),Cum,160.0,2027-03-01,2027-04-30
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-08,Shuttering,Sqm,100.0,2027-03-01,2027-04-30
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-09,Reinforcement,MT,9.0,2027-03-01,2027-04-30
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-10,Bitumen Paint,Sqm,100.0,2027-03-01,2027-04-30
+6,RMPP Emergency feeding Area(108x7 Mtr) Concrete road vendor name - Jagdish Techno Venture Manager:- Lalit Swain,Jagdish Techno Venture,Lalit Swain,R06-11,Salitex board,Sqm,3.0,2027-03-01,2027-04-30
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-01,Excavation,Cum,2000.0,2027-02-15,2027-03-31
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-02,Soil Disposal,Cum,2000.0,2027-02-15,2027-03-31
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-03,Subgrade preparation,Sqmt,1800.0,2027-04-01,2027-04-10
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-04,GSB,Cum,650.0,2027-04-05,2027-04-25
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-05,WMM,Cum,275.0,2027-04-20,2027-05-10
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-06,DLC,Cum,275.0,2027-05-10,2027-05-30
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-07,RCC,Cum,350.0,2027-05-20,2027-08-20
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-08,Shuttering,Sqm,380.0,2027-05-20,2027-08-20
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-09,Reinforcement,MT,21.0,2027-05-20,2027-08-20
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-10,Bitumen Paint,Sqm,340.0,2027-05-20,2027-08-20
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-11,Salitex Board,SQm,12.0,2027-05-20,2027-08-20
+7,RMPP/PCI Coal Shed-2(250x7) Vendor- GSPL Concrete Road-Kerb wall 450 Mtr,GSPL,Lalit Swain,R07-12,Kerb wall,RMT,450.0,2027-08-01,2027-09-15
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-01,Excavation,Cum,900.0,2026-10-10,2026-11-10
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-02,Soil Disposal,Cum,900.0,2026-10-10,2026-11-10
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-03,GSB,Cum,275.0,2026-10-25,2026-11-15
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-04,WMM,Cum,125.0,2026-11-15,2026-11-20
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-05,DLC,Cum,125.0,2026-11-22,2026-11-30
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-06,RCC,Cum,165.0,2026-11-30,2027-01-15
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-07,Shuttering,Sqm,160.0,2026-11-30,2027-01-15
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-08,Reinforcement,MT,9.0,2026-11-30,2027-01-15
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-09,Bitumen Paint,Sqm,142.0,2026-11-30,2027-01-11
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-10,Kerb Wall,RMT,150.0,2027-01-15,2027-01-30
+8,RMHS Coking Coal Yard-12 Road (105x7 ) Concrete Road,Chhaya Trader,Lalit Swain,R08-11,Shalitex Board,Sqm,3.0,2026-12-15,2027-02-01
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-01,Excavation,Cum,140.0,2026-10-21,2026-10-26
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-02,Soil Disposal,Cum,140.0,2026-10-21,2026-10-26
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-03,GSB,Cum,50.0,2026-10-28,2027-10-26
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-04,WMM,Cum,21.0,2026-11-02,2026-11-06
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-05,PCC,Cum,30.0,2026-11-12,2026-11-17
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-06,RCC,Cum,120.0,2026-11-20,2027-01-14
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-07,Shuttering,Sqm,100.0,2026-11-20,2027-01-14
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-08,Reinforcement,MT,7.0,2026-11-20,2027-01-14
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-09,Bitumen Paint,Sqm,70.0,2026-11-20,2027-01-14
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-10,Salitex board,Sqm,3.0,2026-11-20,2027-01-14
+9,BF-2 Ramp Area(80x7 Mtr) Concrete Road,Jagdish Techno Venture,S.Parida,R09-11,Kerb wall,RMT,160.0,2027-01-15,2027-01-31
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-01,Excavation,Cum,1400.0,2026-10-15,2026-12-30
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-02,Soil Disposal,Cum,1400.0,2026-10-15,2026-12-30
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-03,GSB,Cum,360.0,2026-12-15,2027-01-30
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-04,WMM,Cum,160.0,2027-02-01,2027-02-28
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-05,DLC,Cum,160.0,2027-03-01,2027-03-10
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-06,Paver Laying,Sqm,1050.0,2027-03-12,2027-04-30
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-07,RCC,CUM,50.0,2026-11-01,2027-01-15
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-08,Shuttering,Sqm,600.0,2026-11-01,2027-01-15
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-09,Reinforcement,MT,3.0,2026-11-01,2027-01-15
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-10,Angle Fixing,MT,0.5,2026-11-01,2027-01-15
+10,"BF-2 Bin Building-Paver Road(170x6) Drain -80 Mtr,Culvert-15 RMT vendor name:- Balaji Construction Manager:- S.Parida",Balaji Construction,S.Parida,R10-11,Kerb wall,RMT,350.0,2026-11-15,2027-02-15
+11,CMM SMS-1 Assembly Shop( 200x6 mtr)  vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R11-01,Excavation,Cum,1000.0,2026-11-01,2026-12-10
+11,CMM SMS-1 Assembly Shop( 200x6 mtr)  vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R11-02,Soil Disposal,Cum,1000.0,2026-11-01,2026-12-10
+11,CMM SMS-1 Assembly Shop( 200x6 mtr)  vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R11-03,Subgrade preparation,Sqm,1200.0,2026-11-25,2026-12-12
+11,CMM SMS-1 Assembly Shop( 200x6 mtr)  vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R11-04,GSB,Cum,420.0,2026-11-28,2026-12-20
+11,CMM SMS-1 Assembly Shop( 200x6 mtr)  vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R11-05,WMM,Cum,180.0,2026-12-05,2026-12-25
+11,CMM SMS-1 Assembly Shop( 200x6 mtr)  vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R11-06,DLC,Cum,180.0,2026-12-26,2026-12-31
+11,CMM SMS-1 Assembly Shop( 200x6 mtr)  vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R11-07,Paver Laying,Sqm,1120.0,2026-12-25,2027-02-28
+11,CMM SMS-1 Assembly Shop( 200x6 mtr)  vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R11-08,Kerbwall,MTR,380.0,2026-12-20,2027-03-05
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-01,Dismantling,Cum,300.0,2026-10-25,2026-11-10
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-02,Excavation,Cum,2900.0,2026-11-01,2027-02-28
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-03,Soil Disposal,Cum,3200.0,2026-11-01,2027-02-28
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-04,Subgrade Preparation,CSqmt,2400.0,2027-03-01,2027-03-10
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-05,GSB,Cum,830.0,2026-12-15,2027-03-05
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-06,WMM,Cum,356.0,2027-01-01,2027-03-10
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-07,DLC,Cum,356.0,2027-01-20,2027-03-30
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-08,PCC,Cum,15.0,2027-02-01,2027-05-15
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-09,RCC Drain,RMT,100.0,2026-11-15,2027-01-15
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-10,RCC,Cum,380.0,2027-02-01,2027-05-15
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-11,Shuttering,Sqm,1000.0,2027-02-01,2027-05-15
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-12,Reinforcement,MT,30.0,2027-02-01,2027-05-15
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-13,Angle Fixing,MT,0.5,2027-02-01,2027-05-15
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-14,Bitumen Paint,Sqm,540.0,2027-02-01,2027-05-15
+12,CMM SMS-1 Machine Shop(297x8 Mtr) Concrete Road Drain - 100 MTr Culvert-3 nos vendor Name :- Chhaya Trader manager :- Saroj Biswal,Chhaya Trader,Saroj Biswal,R12-15,Kerb Wall,RMT,400.0,2027-03-15,2027-05-30
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-01,Excavation,Cum,400.0,2026-12-07,2026-12-15
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-02,Soil Disposal,Cum,400.0,2026-12-07,2026-12-15
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-03,Levelling &Dressing,SQM,400.0,2026-12-16,2026-12-19
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-04,GSB,Cum,120.0,2026-12-21,2026-12-26
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-05,WMM,Cum,60.0,2026-12-28,2026-12-31
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-06,DLC,Cum,60.0,2027-01-01,2027-01-06
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-07,RCC,Cum,80.0,2027-01-11,2027-02-20
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-08,Shuttering,Sqm,72.0,2027-01-11,2027-02-20
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-09,Reinforcement,MT,5.0,2027-01-11,2027-02-20
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-10,Bitumen Paint,Sqm,72.0,2027-01-11,2027-02-20
+13,SMS-2 Beside Torpedo rail track at Conarc(100X4) Concrete road manager- Lalit swain vendor :-  Chhaya Trader,Chhaya Trader,Lalit Swain,R13-11,Kerb Wall,Mtr,200.0,2027-02-01,2027-02-24
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-01,Dismentalling of Paver,CUM,150.0,2026-10-05,2026-10-10
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-02,Excavation,Cum,450.0,2026-10-05,2026-10-12
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-03,Soil Disposal,Cum,450.0,2026-10-05,2026-10-12
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-04,WMM,Cum,120.0,2026-10-13,2026-10-26
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-05,PCC,Cum,120.0,2026-10-28,2026-11-10
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-06,RCC,Cum,250.0,2026-11-02,2026-12-30
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-07,Shuttering,Sqm,220.0,2026-11-02,2026-12-30
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-08,Reinforcement,MT,11.0,2026-11-02,2026-12-30
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-09,Bitumen Paint,Sqm,200.0,2026-11-02,2026-12-30
+14,HSM Peripheral area/Gate-16 Coil Yard Road(100x8) Concrete Road Vendor:- GSPL Manager :- Bibhrat Das,GSPL,Bibhrat Das,R14-10,Kerb Wall,RMT,200.0,2026-12-01,2027-01-10
+15,RMPP Rail siding area(400x7) Paver Road-Balaji Construction-Manager-Bibhrat Das,Balaji Construction,Bibhrat Das,R15-01,Excavation,Cum,3000.0,2027-04-15,2027-06-30
+15,RMPP Rail siding area(400x7) Paver Road-Balaji Construction-Manager-Bibhrat Das,Balaji Construction,Bibhrat Das,R15-02,Soil Disposal,Cum,3000.0,2027-04-15,2027-06-30
+15,RMPP Rail siding area(400x7) Paver Road-Balaji Construction-Manager-Bibhrat Das,Balaji Construction,Bibhrat Das,R15-03,Levelling and Dressing,Sqmr,2800.0,2027-05-30,2027-07-03
+15,RMPP Rail siding area(400x7) Paver Road-Balaji Construction-Manager-Bibhrat Das,Balaji Construction,Bibhrat Das,R15-04,GSB,Cum,850.0,2027-06-15,2027-07-30
+15,RMPP Rail siding area(400x7) Paver Road-Balaji Construction-Manager-Bibhrat Das,Balaji Construction,Bibhrat Das,R15-05,WMM,Cum,450.0,2027-07-20,2027-08-10
+15,RMPP Rail siding area(400x7) Paver Road-Balaji Construction-Manager-Bibhrat Das,Balaji Construction,Bibhrat Das,R15-06,DLC,Cum,450.0,2027-08-01,2027-08-30
+15,RMPP Rail siding area(400x7) Paver Road-Balaji Construction-Manager-Bibhrat Das,Balaji Construction,Bibhrat Das,R15-07,Paver Laying,Sqm,2800.0,2027-09-01,2027-12-30
+15,RMPP Rail siding area(400x7) Paver Road-Balaji Construction-Manager-Bibhrat Das,Balaji Construction,Bibhrat Das,R15-08,Kerbwall,RMT,750.0,2027-11-15,2028-01-15
+16,Sales Yard -LD Gas holder to MRP(110x14) Paver Vendro - GSPL- Manager- Bibhrat Das,GSPL,Bibhrat Das,R16-01,Excavation,Cum,1800.0,2026-10-01,2026-10-30
+16,Sales Yard -LD Gas holder to MRP(110x14) Paver Vendro - GSPL- Manager- Bibhrat Das,GSPL,Bibhrat Das,R16-02,Soil Disposal,Cum,1800.0,2026-10-01,2026-10-30
+16,Sales Yard -LD Gas holder to MRP(110x14) Paver Vendro - GSPL- Manager- Bibhrat Das,GSPL,Bibhrat Das,R16-03,GSB,Cum,540.0,2026-10-20,2026-11-10
+16,Sales Yard -LD Gas holder to MRP(110x14) Paver Vendro - GSPL- Manager- Bibhrat Das,GSPL,Bibhrat Das,R16-04,WMM,Cum,230.0,2026-11-05,2026-11-14
+16,Sales Yard -LD Gas holder to MRP(110x14) Paver Vendro - GSPL- Manager- Bibhrat Das,GSPL,Bibhrat Das,R16-05,DLC,Cum,230.0,2026-11-16,2026-11-30
+16,Sales Yard -LD Gas holder to MRP(110x14) Paver Vendro - GSPL- Manager- Bibhrat Das,GSPL,Bibhrat Das,R16-06,RCC Drain,Rmt,120.0,2026-10-05,2026-11-30
+16,Sales Yard -LD Gas holder to MRP(110x14) Paver Vendro - GSPL- Manager- Bibhrat Das,GSPL,Bibhrat Das,R16-07,Paver Laying,Sqm,1540.0,2026-12-07,2027-02-27
+16,Sales Yard -LD Gas holder to MRP(110x14) Paver Vendro - GSPL- Manager- Bibhrat Das,GSPL,Bibhrat Das,R16-08,Kerb wall,RMT,220.0,2026-11-30,2027-01-15
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-01,Excavation,Cum,1450.0,2026-01-04,2027-02-20
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-02,Soil Disposal,Cum,1450.0,2026-01-04,2027-02-20
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-03,Levelling and Dressing,Sqmr,1085.0,2027-02-22,2027-03-05
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-04,GSB,Cum,350.0,2027-03-08,2027-04-10
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-05,WMM,Cum,165.0,2027-04-10,2027-04-30
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-06,DLC,Cum,165.0,2027-05-03,2027-05-22
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-07,RCC,Cum,250.0,2027-06-01,2027-08-30
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-08,Shuttering,Sqm,400.0,2027-06-01,2027-08-30
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-09,Steel,MT,14.0,2027-06-01,2027-08-30
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-10,Angle,MT,0.5,2027-06-01,2027-08-30
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-11,Bitumen Paint,SQM,185.0,2027-06-01,2027-08-30
+17,Slag Yard(155x7.0) vendor- Balaji Construction Manager- S.Parida-Concrete Road,Balaji Construction,S.Parida,R17-12,Kerbwall,RMT,260.0,2027-08-25,2027-09-30

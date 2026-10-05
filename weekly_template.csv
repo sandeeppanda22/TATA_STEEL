@@ -1,0 +1,194 @@
+week_ending,activity_id,cumulative_qty,remarks,(activity),(planned_qty)
+,R01-01,,,Road 1 - Six Party Clearance,1.0
+,R01-02,,,Road 1 - Excavation,3200.0
+,R01-03,,,Road 1 - Soil Disposal,3200.0
+,R01-04,,,Road 1 - Subgrade Preparation,3200.0
+,R01-05,,,Road 1 - GSB,1120.0
+,R01-06,,,Road 1 - WMM,480.0
+,R01-07,,,Road 1 - DLC,480.0
+,R01-08,,,Road 1 - RCC Drain,400.0
+,R01-09,,,Road 1 - Paver Laying,3200.0
+,R01-10,,,Road 1 - Kerb wall,1.0
+,R01-11,,,Road 1 - Drain,400.0
+,R02-01,,,Road 2 - Vegitation clearance,1.0
+,R02-02,,,Road 2 - Six Party Clearance,1.0
+,R02-03,,,Road 2 - Road Diversion(Heap Cutting/Temp Road ),1.0
+,R02-04,,,Road 2 - Excavation,20000.0
+,R02-05,,,Road 2 - Soil Disposal,20000.0
+,R02-06,,,Road 2 - GSB,2800.0
+,R02-07,,,Road 2 - WMM,1200.0
+,R02-08,,,Road 2 - DLC,1200.0
+,R02-09,,,Road 2 - RCC Drain,900.0
+,R02-10,,,Road 2 - RCC RoAD,2840.0
+,R02-11,,,Road 2 - Shuttering,6528.0
+,R02-12,,,Road 2 - Reinforcement,148.0
+,R02-13,,,Road 2 - Angle Fixing,8.2
+,R02-14,,,Road 2 - Bitumen Paint,700.0
+,R02-15,,,Road 2 - Drain,400.0
+,R02-16,,,Road 2 - Salitex Board,52.0
+,R02-17,,,Road 2 - Kerb wall,1600.0
+,R03-01,,,Road 3 - Six Party Clearance,1.0
+,R03-02,,,Road 3 - Dismantling,1325.0
+,R03-03,,,Road 3 - Excavation,2200.0
+,R03-04,,,Road 3 - Soil Disposal,3525.0
+,R03-05,,,Road 3 - GSB,480.0
+,R03-06,,,Road 3 - WMM,480.0
+,R03-07,,,Road 3 - PCC,500.0
+,R03-08,,,Road 3 - RCC,1120.0
+,R03-09,,,Road 3 - Shuttering,725.0
+,R03-10,,,Road 3 - Reinforcement,112.0
+,R03-11,,,Road 3 - Bitumen Paint,710.0
+,R03-12,,,Road 3 - Handover,1.0
+,R04-01,,,Road 4 - Six Party Clearance,1.0
+,R04-02,,,Road 4 - Dismantling,1325.0
+,R04-03,,,Road 4 - Excavation,2200.0
+,R04-04,,,Road 4 - Soil Disposal,3525.0
+,R04-05,,,Road 4 - GSB,480.0
+,R04-06,,,Road 4 - WMM,480.0
+,R04-07,,,Road 4 - PCC,500.0
+,R04-08,,,Road 4 - RCC,1120.0
+,R04-09,,,Road 4 - Shuttering,725.0
+,R04-10,,,Road 4 - Reinforcement,112.0
+,R04-11,,,Road 4 - Bitumen Paint,710.0
+,R04-12,,,Road 4 - Handover,1.0
+,R05-01,,,Road 5 - Excavation,8000.0
+,R05-02,,,Road 5 - Soil Disposal,8000.0
+,R05-03,,,Road 5 - Profile correction,3360.0
+,R05-04,,,Road 5 - GSB,1200.0
+,R05-05,,,Road 5 - WMM,510.0
+,R05-06,,,Road 5 - DLC,510.0
+,R05-07,,,Road 5 - PCC,70.0
+,R05-08,,,Road 5 - RCC(reinforcemnt+shutering),670.0
+,R05-09,,,Road 5 - Shuttering,3000.0
+,R05-10,,,Road 5 - Reinforcement,50.0
+,R05-11,,,Road 5 - Kerb wall,900.0
+,R05-12,,,Road 5 - Bitumen Paint,600.0
+,R05-13,,,Road 5 - Salitex board,30.0
+,R06-01,,,Road 6 - Excavation,850.0
+,R06-02,,,Road 6 - Soil Disposal,850.0
+,R06-03,,,Road 6 - Profile correction,760.0
+,R06-04,,,Road 6 - GSB,264.0
+,R06-05,,,Road 6 - WMM,114.0
+,R06-06,,,Road 6 - DLC,114.0
+,R06-07,,,Road 6 - RCC(reinforcemnt+shutering),160.0
+,R06-08,,,Road 6 - Shuttering,100.0
+,R06-09,,,Road 6 - Reinforcement,9.0
+,R06-10,,,Road 6 - Bitumen Paint,100.0
+,R06-11,,,Road 6 - Salitex board,3.0
+,R07-01,,,Road 7 - Excavation,2000.0
+,R07-02,,,Road 7 - Soil Disposal,2000.0
+,R07-03,,,Road 7 - Subgrade preparation,1800.0
+,R07-04,,,Road 7 - GSB,650.0
+,R07-05,,,Road 7 - WMM,275.0
+,R07-06,,,Road 7 - DLC,275.0
+,R07-07,,,Road 7 - RCC,350.0
+,R07-08,,,Road 7 - Shuttering,380.0
+,R07-09,,,Road 7 - Reinforcement,21.0
+,R07-10,,,Road 7 - Bitumen Paint,340.0
+,R07-11,,,Road 7 - Salitex Board,12.0
+,R07-12,,,Road 7 - Kerb wall,450.0
+,R08-01,,,Road 8 - Excavation,900.0
+,R08-02,,,Road 8 - Soil Disposal,900.0
+,R08-03,,,Road 8 - GSB,275.0
+,R08-04,,,Road 8 - WMM,125.0
+,R08-05,,,Road 8 - DLC,125.0
+,R08-06,,,Road 8 - RCC,165.0
+,R08-07,,,Road 8 - Shuttering,160.0
+,R08-08,,,Road 8 - Reinforcement,9.0
+,R08-09,,,Road 8 - Bitumen Paint,142.0
+,R08-10,,,Road 8 - Kerb Wall,150.0
+,R08-11,,,Road 8 - Shalitex Board,3.0
+,R09-01,,,Road 9 - Excavation,140.0
+,R09-02,,,Road 9 - Soil Disposal,140.0
+,R09-03,,,Road 9 - GSB,50.0
+,R09-04,,,Road 9 - WMM,21.0
+,R09-05,,,Road 9 - PCC,30.0
+,R09-06,,,Road 9 - RCC,120.0
+,R09-07,,,Road 9 - Shuttering,100.0
+,R09-08,,,Road 9 - Reinforcement,7.0
+,R09-09,,,Road 9 - Bitumen Paint,70.0
+,R09-10,,,Road 9 - Salitex board,3.0
+,R09-11,,,Road 9 - Kerb wall,160.0
+,R10-01,,,Road 10 - Excavation,1400.0
+,R10-02,,,Road 10 - Soil Disposal,1400.0
+,R10-03,,,Road 10 - GSB,360.0
+,R10-04,,,Road 10 - WMM,160.0
+,R10-05,,,Road 10 - DLC,160.0
+,R10-06,,,Road 10 - Paver Laying,1050.0
+,R10-07,,,Road 10 - RCC,50.0
+,R10-08,,,Road 10 - Shuttering,600.0
+,R10-09,,,Road 10 - Reinforcement,3.0
+,R10-10,,,Road 10 - Angle Fixing,0.5
+,R10-11,,,Road 10 - Kerb wall,350.0
+,R11-01,,,Road 11 - Excavation,1000.0
+,R11-02,,,Road 11 - Soil Disposal,1000.0
+,R11-03,,,Road 11 - Subgrade preparation,1200.0
+,R11-04,,,Road 11 - GSB,420.0
+,R11-05,,,Road 11 - WMM,180.0
+,R11-06,,,Road 11 - DLC,180.0
+,R11-07,,,Road 11 - Paver Laying,1120.0
+,R11-08,,,Road 11 - Kerbwall,380.0
+,R12-01,,,Road 12 - Dismantling,300.0
+,R12-02,,,Road 12 - Excavation,2900.0
+,R12-03,,,Road 12 - Soil Disposal,3200.0
+,R12-04,,,Road 12 - Subgrade Preparation,2400.0
+,R12-05,,,Road 12 - GSB,830.0
+,R12-06,,,Road 12 - WMM,356.0
+,R12-07,,,Road 12 - DLC,356.0
+,R12-08,,,Road 12 - PCC,15.0
+,R12-09,,,Road 12 - RCC Drain,100.0
+,R12-10,,,Road 12 - RCC,380.0
+,R12-11,,,Road 12 - Shuttering,1000.0
+,R12-12,,,Road 12 - Reinforcement,30.0
+,R12-13,,,Road 12 - Angle Fixing,0.5
+,R12-14,,,Road 12 - Bitumen Paint,540.0
+,R12-15,,,Road 12 - Kerb Wall,400.0
+,R13-01,,,Road 13 - Excavation,400.0
+,R13-02,,,Road 13 - Soil Disposal,400.0
+,R13-03,,,Road 13 - Levelling &Dressing,400.0
+,R13-04,,,Road 13 - GSB,120.0
+,R13-05,,,Road 13 - WMM,60.0
+,R13-06,,,Road 13 - DLC,60.0
+,R13-07,,,Road 13 - RCC,80.0
+,R13-08,,,Road 13 - Shuttering,72.0
+,R13-09,,,Road 13 - Reinforcement,5.0
+,R13-10,,,Road 13 - Bitumen Paint,72.0
+,R13-11,,,Road 13 - Kerb Wall,200.0
+,R14-01,,,Road 14 - Dismentalling of Paver,150.0
+,R14-02,,,Road 14 - Excavation,450.0
+,R14-03,,,Road 14 - Soil Disposal,450.0
+,R14-04,,,Road 14 - WMM,120.0
+,R14-05,,,Road 14 - PCC,120.0
+,R14-06,,,Road 14 - RCC,250.0
+,R14-07,,,Road 14 - Shuttering,220.0
+,R14-08,,,Road 14 - Reinforcement,11.0
+,R14-09,,,Road 14 - Bitumen Paint,200.0
+,R14-10,,,Road 14 - Kerb Wall,200.0
+,R15-01,,,Road 15 - Excavation,3000.0
+,R15-02,,,Road 15 - Soil Disposal,3000.0
+,R15-03,,,Road 15 - Levelling and Dressing,2800.0
+,R15-04,,,Road 15 - GSB,850.0
+,R15-05,,,Road 15 - WMM,450.0
+,R15-06,,,Road 15 - DLC,450.0
+,R15-07,,,Road 15 - Paver Laying,2800.0
+,R15-08,,,Road 15 - Kerbwall,750.0
+,R16-01,,,Road 16 - Excavation,1800.0
+,R16-02,,,Road 16 - Soil Disposal,1800.0
+,R16-03,,,Road 16 - GSB,540.0
+,R16-04,,,Road 16 - WMM,230.0
+,R16-05,,,Road 16 - DLC,230.0
+,R16-06,,,Road 16 - RCC Drain,120.0
+,R16-07,,,Road 16 - Paver Laying,1540.0
+,R16-08,,,Road 16 - Kerb wall,220.0
+,R17-01,,,Road 17 - Excavation,1450.0
+,R17-02,,,Road 17 - Soil Disposal,1450.0
+,R17-03,,,Road 17 - Levelling and Dressing,1085.0
+,R17-04,,,Road 17 - GSB,350.0
+,R17-05,,,Road 17 - WMM,165.0
+,R17-06,,,Road 17 - DLC,165.0
+,R17-07,,,Road 17 - RCC,250.0
+,R17-08,,,Road 17 - Shuttering,400.0
+,R17-09,,,Road 17 - Steel,14.0
+,R17-10,,,Road 17 - Angle,0.5
+,R17-11,,,Road 17 - Bitumen Paint,185.0
+,R17-12,,,Road 17 - Kerbwall,260.0
