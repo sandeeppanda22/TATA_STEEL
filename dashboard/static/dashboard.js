@@ -1546,16 +1546,21 @@ function renderOverall(overview, roads, status) {
 
 async function refreshLiveRoads() {
   try {
-    LIVE_ROADS = await dbGet('/api/db/roads');
+    // These three endpoints are independent, so fetch them concurrently rather
+    // than one after another — each used to wait for the previous to finish,
+    // stacking three server round-trips in series on every refresh. activity-
+    // status is allowed to fail on its own (overall still renders with null).
+    const [roads, overview, status] = await Promise.all([
+      dbGet('/api/db/roads'),
+      dbGet('/api/db/overview'),
+      dbGet('/api/db/charts/activity-status').catch(() => null),
+    ]);
+    LIVE_ROADS = roads;
     populateRoadFilters();
     renderLiveRoadsTable();
     renderKpis(LIVE_ROADS);
-    const overview = await dbGet('/api/db/overview');
     renderWeightChart(overview, LIVE_ROADS);
-    try {
-      const status = await dbGet('/api/db/charts/activity-status');
-      renderOverall(overview, LIVE_ROADS, status);
-    } catch (e) { renderOverall(overview, LIVE_ROADS, null); }
+    renderOverall(overview, LIVE_ROADS, status);
     // The fresh road objects above have no cached `.activities`, so the
     // currently expanded road's default table would otherwise be stuck on
     // "Loading activities..." forever (nothing else re-triggers the fetch).
@@ -2005,11 +2010,16 @@ async function renderMilestonesTab() {
 
 async function init() {
   renderSequence();
-  await refreshLiveRoads();
-  await renderIssues();
-  await renderWeightAudit();
-  await renderNavBadges();
-  await renderEditLog();
+  // These five panels are independent of each other, so load them concurrently
+  // instead of one after another — each used to wait for the previous to
+  // finish, stacking five server round-trips in series on every page load.
+  await Promise.all([
+    refreshLiveRoads(),
+    renderIssues(),
+    renderWeightAudit(),
+    renderNavBadges(),
+    renderEditLog(),
+  ]);
 }
 
 // Client-side only: re-fetch and re-render every DB-backed panel. There is
