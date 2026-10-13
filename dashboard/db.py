@@ -24,9 +24,12 @@ so the server has to set it itself or unqualified table names 500 with
 "relation ... does not exist" depending on the connecting role's own default.
 """
 import os
+import threading
+from contextlib import contextmanager
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 
 def _load_dotenv():
@@ -82,16 +85,45 @@ DEFAULTS = {
 SEARCH_PATH_SQL = "SET search_path TO tata_road, public"
 
 
-def _with_search_path(conn):
-    with conn.cursor() as cur:
-        cur.execute(SEARCH_PATH_SQL)
-    return conn
+# ---------------------------------------------------------------------------
+# CONNECTION POOL
+# ---------------------------------------------------------------------------
+# Why a pool: without one, every db.query/execute/execute_returning call opened
+# a brand-new psycopg2 connection and threw it away. Against a local socket
+# that is merely wasteful; against Neon (cloud) each call paid a full TCP + TLS
+# handshake AND the SET search_path round-trip BEFORE the real query — so a
+# single page load, which fans out into dozens of per-road queries, stacked up
+# dozens of connection setups back to back. That was the dominant cause of the
+# dashboard loading slowly. A ThreadedConnectionPool keeps a small set of live
+# connections open and hands them out, so the handshake happens once per
+# connection, not once per query. uvicorn serves requests on a thread pool, so
+# the pool must be the *threaded* variant.
+#
+# The pool is created lazily (first use) rather than at import so that importing
+# this module never requires the DB to be reachable, and so a credential loaded
+# later (e.g. .env written by rebuild.sh mid-process) is still picked up.
+_POOL = None
+_POOL_LOCK = threading.Lock()
+
+# Keep this modest. Neon's free tier and PgBouncer pooling both cap concurrent
+# connections; a handful is plenty for a single-user operational dashboard and
+# stays well under any provider ceiling. maxconn can be raised later if real
+# concurrency grows.
+_POOL_MINCONN = 1
+_POOL_MAXCONN = 8
 
 
-def get_conn():
+def _connect_kwargs():
+    """Resolve connection arguments exactly as the old get_conn() did.
+
+    Returns either ("dsn", <url>) when DATABASE_URL is set (deployment / Neon),
+    or ("kwargs", {...}) built from the PG* vars with the same PGHOST and
+    PGGSSENCMODE handling — PGHOST omitted unless set (Unix socket, skips the
+    GSSAPI/KDC failure on this machine), PGGSSENCMODE passed through only when
+    present (keeps TCP working for a remote server)."""
     url = os.environ.get("DATABASE_URL")
     if url:
-        return _with_search_path(psycopg2.connect(url))
+        return "dsn", url
     kwargs = {
         "port": os.environ.get("PGPORT", DEFAULTS["port"]),
         "user": os.environ.get("PGUSER", DEFAULTS["user"]),
@@ -104,7 +136,48 @@ def get_conn():
     gssencmode = os.environ.get("PGGSSENCMODE")
     if gssencmode:
         kwargs["gssencmode"] = gssencmode
-    return _with_search_path(psycopg2.connect(**kwargs))
+    return "kwargs", kwargs
+
+
+def _get_pool():
+    """Lazily create (once) and return the process-wide connection pool."""
+    global _POOL
+    if _POOL is None:
+        with _POOL_LOCK:
+            if _POOL is None:
+                mode, conf = _connect_kwargs()
+                if mode == "dsn":
+                    _POOL = psycopg2.pool.ThreadedConnectionPool(
+                        _POOL_MINCONN, _POOL_MAXCONN, dsn=conf
+                    )
+                else:
+                    _POOL = psycopg2.pool.ThreadedConnectionPool(
+                        _POOL_MINCONN, _POOL_MAXCONN, **conf
+                    )
+    return _POOL
+
+
+@contextmanager
+def get_conn():
+    """Acquire a pooled connection, set its search_path, and return it to the
+    pool when done.
+
+    Drop-in for the old get_conn(): still used as `with get_conn() as conn:`.
+    The difference is lifecycle — the old version opened a fresh connection the
+    caller's `with` block would commit/rollback but never close (leaked to GC);
+    this version borrows from the pool and ALWAYS hands the connection back via
+    putconn() in `finally`, so it is reused rather than recreated. search_path
+    is re-applied on every checkout because a pooled connection may have been
+    used by an earlier request (and because PgBouncer can reset session state).
+    Commit/rollback stays the caller's job, same as before."""
+    pool = _get_pool()
+    conn = pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(SEARCH_PATH_SQL)
+        yield conn
+    finally:
+        pool.putconn(conn)
 
 
 def query(sql, params=None):
