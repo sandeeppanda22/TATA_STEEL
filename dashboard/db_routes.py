@@ -32,9 +32,10 @@ def list_roads():
     )
     out = []
     for r in roads:
-        pct, drain_pct = calc.road_progress(r["road_no"])
+        pct, drain_pct, over_planned = calc.road_progress(r["road_no"])
         out.append({**_jsonify(r), "progress_pct": pct, "drain_progress_pct": drain_pct,
-                    "planned_pct": calc.road_planned_progress(r["road_no"])})
+                    "planned_pct": calc.road_planned_progress(r["road_no"]),
+                    "over_planned_count": over_planned})
     return out
 
 
@@ -58,14 +59,21 @@ def road_detail(road_no: int):
         """,
         (road_no,),
     )
-    pct, drain_pct = calc.road_progress(road_no)
+    pct, drain_pct, over_planned = calc.road_progress(road_no)
     acts_out = []
     for a in acts:
         a = _jsonify(a)
-        a["pct"] = round(float(a["cum_qty"]) / float(a["planned_qty"]) * 100, 2) if float(a["planned_qty"]) else 0
+        planned = float(a["planned_qty"])
+        cum = float(a["cum_qty"])
+        raw_pct = (cum / planned * 100) if planned else 0
+        # Displayed % is always capped at 100: an actual ahead of its planned
+        # qty means the plan is wrong, not that progress is >100%. over_planned
+        # flags that case so the UI can prompt raising planned_qty.
+        a["pct"] = round(min(raw_pct, 100), 2)
+        a["over_planned"] = bool(planned and cum > planned + 1e-6)
         acts_out.append(a)
     return {"road": _jsonify(road[0]), "progress_pct": pct, "drain_progress_pct": drain_pct,
-            "activities": acts_out}
+            "over_planned_count": over_planned, "activities": acts_out}
 
 
 class ActivityCreate(BaseModel):
@@ -189,47 +197,44 @@ def activity_weekly(activity_id: int):
     if not act:
         raise HTTPException(404, "Activity not found")
     a = act[0]
-    schedule = calc.straight_line_weeks(a["start_date"], a["end_date"], float(a["planned_qty"]))
-    entries = {
-        e["week_start_date"]: e
-        for e in db.query(
-            "SELECT * FROM weekly_entry WHERE activity_id = %s ORDER BY week_start_date",
-            (activity_id,),
-        )
-    }
-    # Merge the nominal schedule with every *actually recorded* week, even one
-    # that falls outside this activity's own start/end window (e.g. saved via
-    # the whole-road weekly update using a single date applied to all
-    # activities). Without this merge, such an entry is invisible here (so it
-    # can't be viewed/edited/deleted) yet is still counted in the activity's
-    # live cumulative total everywhere else - the header and this list would
-    # silently disagree.
-    sched_map = {ws: (we, planned_default) for ws, we, planned_default in schedule}
-    all_weeks = sorted(set(sched_map) | set(entries))
+    # Append-only ledger: list every submission in chronological order (by the
+    # week it belongs to, then by when it was entered) with a running
+    # cumulative. Each row is one submission - the user may have several in the
+    # same week - so each carries its own entry_id for individual deletion.
+    entries = db.query(
+        """
+        SELECT entry_id, week_start_date, week_end_date, actual_qty,
+               planned_qty_override, note, entered_at
+        FROM weekly_entry WHERE activity_id = %s
+        ORDER BY week_start_date, entered_at, entry_id
+        """,
+        (activity_id,),
+    )
+    planned_qty = float(a["planned_qty"]) if a["planned_qty"] else 0.0
     cum = 0.0
     rows = []
-    for ws in all_weeks:
-        entry = entries.get(ws)
-        if ws in sched_map:
-            we, planned_default = sched_map[ws]
-        else:
-            we, planned_default = entry["week_end_date"], 0.0
-        planned = float(entry["planned_qty_override"]) if entry and entry["planned_qty_override"] is not None else planned_default
-        actual = float(entry["actual_qty"]) if entry else 0.0
+    for e in entries:
+        actual = float(e["actual_qty"])
         cum += actual
+        raw_pct = (cum / planned_qty * 100) if planned_qty else 0
         rows.append({
-            "week_start_date": ws.isoformat(), "week_end_date": we.isoformat(),
-            "planned_this_week": round(planned, 3), "actual_this_week": actual,
+            "entry_id": e["entry_id"],
+            "week_start_date": e["week_start_date"].isoformat(),
+            "week_end_date": e["week_end_date"].isoformat(),
+            "entered_at": e["entered_at"].isoformat() if e["entered_at"] else None,
+            "actual_this_week": actual,
             "cumulative_actual": round(cum, 3),
-            "cumulative_pct": round(cum / float(a["planned_qty"]) * 100, 2) if a["planned_qty"] else 0,
-            "note": entry["note"] if entry else None,
-            "out_of_schedule": ws not in sched_map,
+            # Capped at 100 - an actual ahead of planned means the plan is
+            # wrong, not that progress exceeds completion.
+            "cumulative_pct": round(min(raw_pct, 100), 2),
+            "note": e["note"],
         })
-    return {"activity": _jsonify(a), "weekly": rows}
+    over_planned = bool(planned_qty and cum > planned_qty + 1e-6)
+    return {"activity": _jsonify(a), "weekly": rows, "over_planned": over_planned}
 
 
 # ---------------------------------------------------------------------------
-# Weekly data entry (OPEN-01/02/06, BR-08 gating enforced here)
+# Weekly data entry (OPEN-01/02/06). Append-only ledger; no BR-08 gating.
 # ---------------------------------------------------------------------------
 class WeeklyEntryIn(BaseModel):
     week_start_date: datetime.date  # any day in the week; resolved to its Monday
@@ -263,24 +268,15 @@ def submit_weekly_entry(activity_id: int, entry: WeeklyEntryIn):
 
     week_end = week_start + datetime.timedelta(days=6)
 
-    # Simulate the post-write state to check BR-08 gating BEFORE committing.
-    existing = db.query(
-        "SELECT COALESCE(SUM(actual_qty),0) AS cum FROM weekly_entry "
-        "WHERE activity_id = %s AND week_start_date != %s",
-        (activity_id, week_start),
-    )[0]["cum"]
-    _validate_gating(activity_id, float(existing) + entry.actual_qty)
-
+    # Append-only ledger (ruling 2026-10-13): every submission is its own row
+    # and ADDS to the activity's cumulative - it never replaces the week's
+    # figure, so the user can update many times a week. No sequencing/gating
+    # check: progress may be entered for any activity in any order.
     rows = db.execute_returning(
         """
         INSERT INTO weekly_entry (activity_id, week_start_date, week_end_date,
             planned_qty_override, actual_qty, note)
         VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (activity_id, week_start_date) DO UPDATE SET
-            planned_qty_override = EXCLUDED.planned_qty_override,
-            actual_qty = EXCLUDED.actual_qty,
-            note = EXCLUDED.note,
-            entered_at = now()
         RETURNING *
         """,
         (activity_id, week_start, week_end, entry.planned_qty_override,
@@ -289,65 +285,11 @@ def submit_weekly_entry(activity_id: int, entry: WeeklyEntryIn):
     return _jsonify(rows[0])
 
 
-def _validate_gating(activity_id, hypothetical_cum_qty):
-    """BR-08, enforced in BOTH directions against the hypothetical cumulative
-    total this write (or deletion) would leave behind, so we reject before
-    writing/deleting rather than after:
-      - forward: this activity cannot end up ahead of its predecessor
-        (seq_no - 1 present in the chain).
-      - backward: reducing or deleting an earlier activity's entry cannot
-        leave it behind an already-recorded successor. Without this check,
-        a later activity validly saved while ahead could be stranded there
-        once the earlier activity's entry is edited down or removed - the
-        reported bug (e.g. Soil Disposal left at 6.25% after Excavation's
-        entry was reduced to 3.12%).
-    """
-    rows = db.query(
-        """
-        SELECT a.activity_id, a.seq_no, a.raw_name, a.planned_qty,
-               COALESCE(SUM(w.actual_qty), 0) AS cum_qty
-        FROM activity a
-        LEFT JOIN weekly_entry w ON w.activity_id = a.activity_id
-        WHERE a.road_no = (SELECT road_no FROM activity WHERE activity_id = %s)
-          AND a.seq_no IS NOT NULL
-        GROUP BY a.activity_id, a.seq_no, a.raw_name, a.planned_qty
-        ORDER BY a.seq_no
-        """,
-        (activity_id,),
-    )
-    pct_by_seq, name_by_seq, this_seq, this_name = {}, {}, None, None
-    for r in rows:
-        cum = hypothetical_cum_qty if r["activity_id"] == activity_id else float(r["cum_qty"])
-        pct_by_seq[r["seq_no"]] = (cum / float(r["planned_qty"]) * 100) if r["planned_qty"] else 0
-        name_by_seq[r["seq_no"]] = r["raw_name"]
-        if r["activity_id"] == activity_id:
-            this_seq, this_name = r["seq_no"], r["raw_name"]
-    if this_seq is None:
-        return
-    this_pct = pct_by_seq[this_seq]
-
-    prior = [s for s in pct_by_seq if s < this_seq]
-    if prior:
-        prev_seq = max(prior)
-        prev_pct = pct_by_seq[prev_seq]
-        if this_pct > prev_pct + 1e-6:
-            raise HTTPException(
-                409,
-                f"This entry would put {this_name} at {this_pct:.1f}% complete, "
-                f"ahead of {name_by_seq[prev_seq]} at {prev_pct:.1f}%. "
-                f"Enter progress on {name_by_seq[prev_seq]} first, or reduce this quantity."
-            )
-
-    for succ_seq in sorted(s for s in pct_by_seq if s > this_seq):
-        succ_pct = pct_by_seq[succ_seq]
-        if succ_pct > this_pct + 1e-6:
-            raise HTTPException(
-                409,
-                f"This change would leave {this_name} at {this_pct:.1f}% complete, "
-                f"behind {name_by_seq[succ_seq]} which is already at {succ_pct:.1f}%. "
-                f"A layer cannot run ahead of the layer beneath it - reduce "
-                f"{name_by_seq[succ_seq]} first, or do not lower this quantity below that."
-            )
+def _validate_gating(activity_id, hypothetical_cum_qty):  # noqa: ARG001
+    """REMOVED (ruling 2026-10-13). BR-08 percentage gating no longer applies:
+    progress may be entered for any activity in any order. Kept as a no-op so
+    any lingering caller does not break; new code must not call it."""
+    return
 
 
 # ---------------------------------------------------------------------------
@@ -656,35 +598,19 @@ def _apply_update(table, pk_col, pk_val, current, changes, source_fields):
             table: _jsonify(rows[0])}
 
 
-@router.delete("/activities/{activity_id}/weekly/{week_start_date}")
-def delete_weekly_entry(activity_id: int, week_start_date: datetime.date):
-    """Remove one week's actual. Needed to correct a mis-keyed entry: the POST
-    upsert can overwrite a value but cannot take a week back to 'nothing
-    recorded', and a 0 actual is a different statement from no entry.
-
-    Any day in the week may be given; it resolves to that week's Monday.
-    """
-    week_start = _monday_of(week_start_date)
-
-    # Removing an earlier activity's entry lowers its cumulative, which can
-    # strand an already-recorded successor ahead of it (BR-08) - check the
-    # post-delete state before deleting, same as the POST path does.
-    existing = db.query(
-        "SELECT COALESCE(SUM(actual_qty),0) AS cum FROM weekly_entry "
-        "WHERE activity_id = %s AND week_start_date != %s",
-        (activity_id, week_start),
-    )[0]["cum"]
-    _validate_gating(activity_id, float(existing))
-
+@router.delete("/activities/{activity_id}/weekly/{entry_id}")
+def delete_weekly_entry(activity_id: int, entry_id: int):
+    """Remove ONE ledger submission by its entry_id. In the append-only model
+    a week can hold several submissions, so deletion targets a single row (not
+    the whole week). No gating check: removing a row only lowers the
+    activity's cumulative, which is always allowed now (BR-08 superseded)."""
     n = db.execute(
-        "DELETE FROM weekly_entry WHERE activity_id = %s AND week_start_date = %s",
-        (activity_id, week_start),
+        "DELETE FROM weekly_entry WHERE entry_id = %s AND activity_id = %s",
+        (entry_id, activity_id),
     )
     if not n:
-        raise HTTPException(404, f"No entry for activity {activity_id} in the week "
-                                 f"starting {week_start}")
-    return {"deleted": n, "activity_id": activity_id,
-            "week_start_date": week_start.isoformat()}
+        raise HTTPException(404, f"No weekly entry {entry_id} for activity {activity_id}")
+    return {"deleted": n, "activity_id": activity_id, "entry_id": entry_id}
 
 
 @router.get("/edit-log")
@@ -886,37 +812,23 @@ def import_weekly_csv(payload: dict):
             "planned_qty_override": planned_qty_override,
         })
 
-    # Validate every activity exists and BR-08 gating holds, in the hypothetical
-    # post-import state, before writing anything.
-    by_activity = {}
+    # Validate every activity exists before writing anything. No gating check
+    # (BR-08 superseded) - any order is allowed.
     for p in parsed:
-        by_activity.setdefault(p["activity_id"], []).append(p)
-    for activity_id, entries in by_activity.items():
-        if not db.query("SELECT 1 FROM activity WHERE activity_id = %s", (activity_id,)):
-            raise HTTPException(404, f"Unknown activity_id {activity_id}")
-        weeks_in_import = {e["week_start"] for e in entries}
-        existing = db.query(
-            "SELECT COALESCE(SUM(actual_qty),0) AS cum FROM weekly_entry "
-            "WHERE activity_id = %s AND week_start_date NOT IN %s",
-            (activity_id, tuple(weeks_in_import) + (datetime.date(1900, 1, 1),)),
-        )[0]["cum"]
-        hypothetical = float(existing) + sum(e["actual_qty"] for e in entries)
-        _validate_gating(activity_id, hypothetical)
+        if not db.query("SELECT 1 FROM activity WHERE activity_id = %s", (p["activity_id"],)):
+            raise HTTPException(404, f"Unknown activity_id {p['activity_id']}")
 
     with db.get_conn() as conn:
         with conn.cursor() as cur:
             for p in parsed:
                 week_end = p["week_start"] + datetime.timedelta(days=6)
+                # Append-only ledger: each imported row ADDS to the activity's
+                # cumulative; it does not overwrite an existing week's figure.
                 cur.execute(
                     """
                     INSERT INTO weekly_entry (activity_id, week_start_date, week_end_date,
                         planned_qty_override, actual_qty, note)
                     VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (activity_id, week_start_date) DO UPDATE SET
-                        planned_qty_override = EXCLUDED.planned_qty_override,
-                        actual_qty = EXCLUDED.actual_qty,
-                        note = EXCLUDED.note,
-                        entered_at = now()
                     """,
                     (p["activity_id"], p["week_start"], week_end,
                      p["planned_qty_override"], p["actual_qty"], p["note"]),

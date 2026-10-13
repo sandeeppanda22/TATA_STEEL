@@ -40,47 +40,11 @@ def straight_line_weeks(start_date, end_date, planned_qty):
 
 
 # ---------------------------------------------------------------------------
-# BR-08: percentage gating. An activity's actual % may not exceed the
-# actual % of the previous PRESENT activity in BR-03 order (seq_no), within
-# the same road. Activities with seq_no IS NULL (not in BR-03 - BR-02's
-# non-weighted extras) are outside the gated chain entirely.
+# BR-08 (percentage gating) was REMOVED by user ruling 2026-10-13. Progress
+# may be entered for any activity in any order; no check_gating() exists any
+# more and nothing restricts an activity from running ahead of the one before
+# it. The pyramid/road views fill each layer by its own actual %.
 # ---------------------------------------------------------------------------
-def check_gating(activity_id):
-    """Raise ValueError with a human message if this activity's cumulative %
-    would exceed the previous present (seq_no-ordered) activity's %."""
-    rows = db.query(
-        """
-        SELECT a.activity_id, a.seq_no, a.road_no, a.planned_qty,
-               COALESCE(SUM(w.actual_qty), 0) AS cum_qty
-        FROM activity a
-        LEFT JOIN weekly_entry w ON w.activity_id = a.activity_id
-        WHERE a.road_no = (SELECT road_no FROM activity WHERE activity_id = %s)
-          AND a.seq_no IS NOT NULL
-        GROUP BY a.activity_id, a.seq_no, a.road_no, a.planned_qty
-        ORDER BY a.seq_no
-        """,
-        (activity_id,),
-    )
-    pct_by_seq = {}
-    this_seq = None
-    for r in rows:
-        pct = (float(r["cum_qty"]) / float(r["planned_qty"]) * 100) if r["planned_qty"] else 0
-        pct_by_seq[r["seq_no"]] = pct
-        if r["activity_id"] == activity_id:
-            this_seq = r["seq_no"]
-    if this_seq is None:
-        return  # activity not in the gated chain (BR-02 extra, no seq_no)
-    prior_seqs = [s for s in pct_by_seq if s < this_seq]
-    if not prior_seqs:
-        return
-    prev_pct = pct_by_seq[max(prior_seqs)]
-    this_pct = pct_by_seq[this_seq]
-    if this_pct > prev_pct + 1e-6:
-        raise ValueError(
-            f"This activity would be at {this_pct:.1f}% complete, "
-            f"ahead of the previous activity in sequence at {prev_pct:.1f}%. "
-            f"A layer cannot run ahead of the layer beneath it."
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +52,15 @@ def check_gating(activity_id):
 # BR-09: drain % tracked separately, same cumulative/planned mechanism.
 # ---------------------------------------------------------------------------
 def road_progress(road_no):
+    """Returns (road_pct, drain_pct, over_planned_count).
+
+    road_pct/drain_pct are each capped at 100: an activity whose recorded
+    actual exceeds its planned_qty is reported as 100% complete, never above
+    - the planned figure is the thing that is wrong in that case, not the
+    progress. over_planned_count is how many (non-drain or drain) activities
+    on this road are in that state, so the UI can warn the user to raise the
+    planned_qty rather than silently showing >100%.
+    """
     acts = db.query(
         """
         SELECT a.activity_id, a.raw_name, a.major, a.weight_pct, a.planned_qty,
@@ -102,14 +75,20 @@ def road_progress(road_no):
     )
     road_pct = 0.0
     drain_pct = None
+    over_planned = 0
     for a in acts:
-        pct = (float(a["cum_qty"]) / float(a["planned_qty"]) * 100) if a["planned_qty"] else 0
+        planned = float(a["planned_qty"]) if a["planned_qty"] else 0
+        cum = float(a["cum_qty"])
+        raw_pct = (cum / planned * 100) if planned else 0
+        pct = min(raw_pct, 100)
+        if planned and cum > planned + 1e-6:
+            over_planned += 1
         if a["is_drain"]:
             drain_pct = round(pct, 2)
             continue  # drain is not one of the 5 majors (BR-09), excluded from road_pct
         if a["major"]:
             road_pct += pct * float(a["weight_pct"]) / 100
-    return round(road_pct, 2), drain_pct
+    return round(road_pct, 2), drain_pct, over_planned
 
 
 def road_planned_progress(road_no, as_of=None):
@@ -142,11 +121,12 @@ def overall_progress(line_manager=None):
     weighted = 0.0
     detail = []
     for r in roads:
-        pct, drain_pct = road_progress(r["road_no"])
+        pct, drain_pct, over_planned = road_progress(r["road_no"])
         share = float(r["length_m"]) / total_len * 100
         weighted += pct * float(r["length_m"]) / total_len
         detail.append({"road_no": r["road_no"], "road_pct": pct, "drain_pct": drain_pct,
                        "planned_pct": road_planned_progress(r["road_no"]),
+                       "over_planned_count": over_planned,
                        "length_m": float(r["length_m"]), "length_weight_pct": round(share, 2)})
     return round(weighted, 2), detail
 
@@ -182,7 +162,7 @@ def road_summary_rows(line_manager=None):
         roads = db.query("SELECT road_no, location, vendor, line_manager FROM road ORDER BY road_no")
     out = []
     for r in roads:
-        actual_pct, _ = road_progress(r["road_no"])
+        actual_pct, _, _ = road_progress(r["road_no"])
         planned_pct = road_planned_progress(r["road_no"])
         n_acts = db.query("SELECT COUNT(*) AS n FROM activity WHERE road_no = %s", (r["road_no"],))[0]["n"]
         status = "On track" if actual_pct >= planned_pct - 1e-6 else "Behind"
@@ -234,7 +214,7 @@ def _group_performance(group_field, line_manager=None):
     out = {}
     for r in roads:
         grp = r["grp"] or "(unassigned)"
-        pct, _ = road_progress(r["road_no"])
+        pct, _, _ = road_progress(r["road_no"])
         o = out.setdefault(grp, {"group": grp, "roads": 0, "weighted_pct_sum": 0.0,
                                  "length_sum": 0.0, "slippage_days": [], "activities_behind": 0})
         o["roads"] += 1
@@ -321,7 +301,7 @@ def bottlenecks(threshold_pct=15, stale_weeks=3):
             if reasons:
                 out.append({"road_no": road_no, "line_manager": a["line_manager"],
                            "location": a["location"], "activity": a["raw_name"],
-                           "actual_pct": round(pct, 1), "expected_pct": exp, "reasons": reasons})
+                           "actual_pct": round(min(pct, 100), 1), "expected_pct": exp, "reasons": reasons})
     return out
 
 

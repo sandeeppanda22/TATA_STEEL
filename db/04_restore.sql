@@ -33,8 +33,22 @@ END $$;
 SELECT * FROM tata_road_backup.backup_meta;
 
 -- ---------------------------------------------------------------------------
--- Weekly actuals. ON CONFLICT DO NOTHING so a restore never overwrites a
--- value that already exists post-rebuild.
+-- Weekly actuals.
+--
+-- weekly_entry is an append-only ledger (ruling 2026-10-13): there is no
+-- UNIQUE (activity_id, week_start_date) any more, so the old
+-- "ON CONFLICT (activity_id, week_start_date) DO NOTHING" cannot be used --
+-- Postgres has no unique index to infer the conflict from and the statement
+-- errors outright on a current schema.
+--
+-- Re-running the restore must still not double-count, which an unguarded
+-- INSERT would do (two identical ledger rows = twice the quantity, because
+-- cumulative is SUM(actual_qty)). So the guard is an explicit anti-join on
+-- the ledger row's own identity instead: a submission is the same submission
+-- if it lands on the same activity, same week, same entered_at timestamp and
+-- same quantity. entered_at defaults to now() per submission, so this
+-- distinguishes genuine repeat entries in one week (which MUST all restore)
+-- from a re-run of this script (which must not duplicate them).
 -- ---------------------------------------------------------------------------
 INSERT INTO tata_road.weekly_entry
     (activity_id, week_start_date, week_end_date,
@@ -45,7 +59,13 @@ FROM tata_road_backup.weekly_entry b
 JOIN tata_road.activity a
   ON a.road_no = b.road_no
  AND a.sheet_row_order = b.sheet_row_order
-ON CONFLICT (activity_id, week_start_date) DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1 FROM tata_road.weekly_entry w
+    WHERE w.activity_id      = a.activity_id
+      AND w.week_start_date  = b.week_start_date
+      AND w.entered_at       = b.entered_at
+      AND w.actual_qty       = b.actual_qty
+);
 
 -- ---------------------------------------------------------------------------
 -- Rows that found no matching activity after the reseed. Kept, not discarded.
@@ -81,13 +101,31 @@ WHERE a.raw_name IS DISTINCT FROM b.raw_name;
 -- edits to road/activity, because the reseed deliberately reset those rows to
 -- what the source workbook says. Re-applying automatically would silently
 -- undo the rebuild. Use the report below to decide what to re-enter.
+--
+-- Guarded by the same anti-join idea as weekly_entry above, so re-running
+-- this script does not pile up duplicate edit history. edit_id is NOT used
+-- as the key: it is BIGSERIAL in the live table and gets reassigned on
+-- insert, so the backup's id tells us nothing about what is already here.
+-- The row's content is the identity instead, with IS NOT DISTINCT FROM
+-- because old_value/new_value are nullable (plain = would treat two NULLs as
+-- unknown rather than equal and re-insert the row every time).
 -- ---------------------------------------------------------------------------
 INSERT INTO tata_road.edit_log
     (table_name, row_pk, field, old_value, new_value,
      source_override, edited_at)
-SELECT table_name, row_pk, field, old_value, new_value,
-       source_override, edited_at
-FROM tata_road_backup.edit_log;
+SELECT b.table_name, b.row_pk, b.field, b.old_value, b.new_value,
+       b.source_override, b.edited_at
+FROM tata_road_backup.edit_log b
+WHERE NOT EXISTS (
+    SELECT 1 FROM tata_road.edit_log e
+    WHERE e.table_name       =                 b.table_name
+      AND e.row_pk           =                 b.row_pk
+      AND e.field            =                 b.field
+      AND e.edited_at        =                 b.edited_at
+      AND e.old_value        IS NOT DISTINCT FROM b.old_value
+      AND e.new_value        IS NOT DISTINCT FROM b.new_value
+      AND e.source_override  IS NOT DISTINCT FROM b.source_override
+);
 
 \echo ''
 \echo '=== restore result ==='

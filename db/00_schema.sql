@@ -65,11 +65,20 @@ CREATE TABLE IF NOT EXISTS activity (
 CREATE INDEX IF NOT EXISTS idx_activity_road ON activity(road_no);
 
 -- ---------------------------------------------------------------------------
--- WEEKLY_ENTRY  (the data-entry engine. OPEN-01: quantity entered per week
---   in the activity's own unit, % computed as cumulative/planned_qty.
+-- WEEKLY_ENTRY  (the data-entry engine. OPEN-01: quantity entered per
+--   submission in the activity's own unit, as a DELTA; % computed as
+--   cumulative/planned_qty where cumulative = SUM(actual_qty).
 --   OPEN-02: planned_qty_override lets a week's auto-spread planned figure
 --   be replaced manually; NULL means "use the straight-line default".
---   OPEN-06: week runs Monday..Sunday, keyed by week_start_date.)
+--   OPEN-06: each row still records which Mon..Sun week it belongs to
+--   (week_start_date) for weekly rollups/charts.
+--
+--   APPEND-ONLY LEDGER (ruling 2026-10-13): there is deliberately NO
+--   UNIQUE (activity_id, week_start_date) constraint. The user may update
+--   many times a week; every submission is its own row and ADDS to the
+--   activity's cumulative (it does not replace the week's figure). All
+--   readers already aggregate with SUM(actual_qty), so multiple rows per
+--   week are summed correctly. entered_at orders submissions within a week.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS weekly_entry (
     entry_id              BIGSERIAL PRIMARY KEY,
@@ -77,10 +86,9 @@ CREATE TABLE IF NOT EXISTS weekly_entry (
     week_start_date       DATE NOT NULL,          -- Monday
     week_end_date         DATE NOT NULL,          -- Sunday
     planned_qty_override  NUMERIC(14,3),          -- NULL = use straight-line default (OPEN-02)
-    actual_qty             NUMERIC(14,3) NOT NULL DEFAULT 0 CHECK (actual_qty >= 0),  -- this week's qty
+    actual_qty             NUMERIC(14,3) NOT NULL DEFAULT 0 CHECK (actual_qty >= 0),  -- this submission's delta
     entered_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     note                  TEXT,
-    UNIQUE (activity_id, week_start_date),
     CHECK (week_end_date = week_start_date + 6),
     CHECK (EXTRACT(ISODOW FROM week_start_date) = 1)   -- must be a Monday
 );
@@ -163,11 +171,10 @@ CREATE INDEX IF NOT EXISTS idx_manual_issue_road ON manual_issue(road_no);
 -- what is already there, including anything added through the UI "Add Road"
 -- form (POST /api/db/roads) or any weekly actuals/edits already entered.
 
--- NOTE on gating (BR-08): percentage gating ("an activity's actual % cannot
--- exceed the previous present activity's actual %") compares across rows
--- within a road's seq_no order. That is enforced in the API layer at write
--- time, not as a CHECK constraint, since Postgres CHECK cannot reference
--- other rows. See api layer for the gating function.
+-- NOTE on gating (BR-08): SUPERSEDED by user ruling 2026-10-13. Progress may
+-- be entered for any activity in any order; there is no percentage-gating
+-- rule any more. The old write-time check has been removed from the API and
+-- from calculations.py. No schema object ever enforced it.
 --
 -- NOTE on CPM (BR-14/OPEN-03): critical path uses each activity's own
 -- start_date/end_date as-is (overlaps allowed, per ruling). CPM is computed

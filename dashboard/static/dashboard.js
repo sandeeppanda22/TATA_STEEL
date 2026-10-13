@@ -186,13 +186,19 @@ function csProgressBars(data) {
 
   // Carry the actual cumulative forward across the backbone: for each week use
   // the latest recorded actual point on or before it (null before the first).
+  // Capped at today - a week that hasn't happened yet has no actual by
+  // definition, so it should show no actual bar rather than a flat carried
+  // value stretching the last real entry all the way out to the end of the
+  // planned schedule (which otherwise reads as "actual" progress for months
+  // nothing was actually reported).
+  const today = todayISO();
   const actualPts = actual.map(a => ({ week: a.week, pct: Number(a.pct) }))
     .sort((x, y) => (x.week < y.week ? -1 : 1));
   const actualBy = new Map();
   let ai = 0, carried = null;
   weeks.forEach(w => {
     while (ai < actualPts.length && actualPts[ai].week <= w) { carried = actualPts[ai].pct; ai++; }
-    actualBy.set(w, carried);
+    actualBy.set(w, w <= today ? carried : null);
   });
 
   // ---- MoM / QoQ, measured on the actual series by week index -------------
@@ -220,31 +226,73 @@ function csProgressBars(data) {
 
   // ---- grouped bars --------------------------------------------------------
   const W = 760, H = 300, L = 42, R = 16, T = 12, B = 40, pw = W - L - R, ph = H - T - B;
-  const Y = p => T + ph * (1 - p / 100);
+
+  // Y-axis scales to whatever's actually in view: zoomed into a single quarter
+  // where progress only runs 20-35%, a fixed 0-100 axis flattens the bars to a
+  // sliver. Find the max value in this (already filtered) backbone, round up
+  // to a readable step, and scale the axis to that instead of always 100.
+  let dataMax = 0;
+  weeks.forEach(w => {
+    const pv = plannedBy.get(w); if (pv != null) dataMax = Math.max(dataMax, pv);
+    const av = actualBy.get(w); if (av != null) dataMax = Math.max(dataMax, av);
+  });
+  const axisMax = (() => {
+    if (dataMax <= 0) return 100;
+    const step = dataMax <= 10 ? 2 : dataMax <= 20 ? 5 : 10;
+    return Math.min(100, Math.ceil(dataMax / step) * step);
+  })();
+  const fmtAxisPct = v => (Math.round(v * 10) / 10) + '%';
+
+  const Y = p => T + ph * (1 - p / axisMax);
   const groupW = pw / weeks.length;
   const barW = Math.max(1.5, Math.min(14, groupW * 0.4));
   let g = '';
-  [0, 25, 50, 75, 100].forEach(p => {
+  [0, 0.25, 0.5, 0.75, 1].forEach(frac => {
+    const p = axisMax * frac;
     g += `<line x1="${L}" x2="${W - R}" y1="${Y(p)}" y2="${Y(p)}" stroke="#EDF0F2"/>` +
-         `<text x="${L - 6}" y="${Y(p) + 3}" fill="#4A5560" font-size="10" text-anchor="end">${p}%</text>`;
+         `<text x="${L - 6}" y="${Y(p) + 3}" fill="#4A5560" font-size="10" text-anchor="end">${fmtAxisPct(p)}</text>`;
   });
+
+  // Month ticks: one per calendar month present, centered under that month's
+  // own span of bars (not just its first week) - collected up front so the
+  // label density can also be thinned to fit the width. With a long schedule
+  // (dozens of months) a label every month overlaps its neighbours
+  // ("Dec25Feb26Mar26..." running together); only draw every Nth tick, N
+  // chosen so each label gets enough horizontal room. A month that is the
+  // only one in view naturally centers under the whole plot area this way.
+  const monthGroups = [];
+  let curKey = null, curStart = 0;
+  weeks.forEach((w, i) => {
+    const parts = isoToParts(w);
+    const key = parts ? parts[0] + '-' + parts[1] : null;
+    if (key !== curKey) {
+      if (curKey !== null) monthGroups.push({ start: curStart, end: i - 1, parts: isoToParts(weeks[curStart]) });
+      curKey = key;
+      curStart = i;
+    }
+  });
+  if (curKey !== null) monthGroups.push({ start: curStart, end: weeks.length - 1, parts: isoToParts(weeks[curStart]) });
+  const monthTicks = monthGroups.map(mg => ({ cx: L + groupW * ((mg.start + mg.end) / 2 + 0.5), parts: mg.parts }));
+  const MIN_LABEL_GAP = 34; // px in the 760-wide viewBox needed for a "Mon YY" label
+  const avgTickGap = monthTicks.length > 1 ? pw / monthTicks.length : pw;
+  const labelStride = Math.max(1, Math.ceil(MIN_LABEL_GAP / avgTickGap));
+
   weeks.forEach((w, i) => {
     const cx = L + groupW * (i + 0.5);
     const pPct = plannedBy.get(w);
     const aPct = actualBy.get(w);
     if (pPct != null) {
-      const h = ph * pPct / 100;
+      const h = ph * Math.min(pPct, axisMax) / axisMax;
       g += `<rect x="${(cx - barW).toFixed(1)}" y="${Y(pPct).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${CHART_COL.planned}"><title>${fmtDate(w)} planned: ${pPct.toFixed(1)}%</title></rect>`;
     }
     if (aPct != null) {
-      const h = ph * aPct / 100;
+      const h = ph * Math.min(aPct, axisMax) / axisMax;
       g += `<rect x="${cx.toFixed(1)}" y="${Y(aPct).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${CHART_COL.actual}"><title>${fmtDate(w)} actual: ${aPct.toFixed(1)}%</title></rect>`;
     }
-    // Month label on the first week of each calendar month.
-    const parts = isoToParts(w);
-    if (parts && (i === 0 || isoToParts(weeks[i - 1])[1] !== parts[1])) {
-      g += `<text x="${cx.toFixed(1)}" y="${H - 12}" fill="#4A5560" font-size="9" text-anchor="middle">${new Date(parts[0], parts[1] - 1, 1).toLocaleString('en', { month: 'short', year: '2-digit' })}</text>`;
-    }
+  });
+  monthTicks.forEach((t, k) => {
+    if (k % labelStride !== 0) return;
+    g += `<text x="${t.cx.toFixed(1)}" y="${H - 12}" fill="#4A5560" font-size="9" text-anchor="middle">${new Date(t.parts[0], t.parts[1] - 1, 1).toLocaleString('en', { month: 'short', year: '2-digit' })}</text>`;
   });
   return summary + `<svg viewBox="0 0 ${W} ${H}" class="scurve-svg">${g}</svg>`;
 }
@@ -347,7 +395,9 @@ function populateChartFilters() {
 
   const yearSel = document.getElementById('chartFilterYear');
   if (yearSel) {
-    const years = [...new Set(weeksForLevel('year', f).map(fyStartOf).filter(v => v != null))].sort((a, b) => a - b);
+    // FY 2025-26 (start year 2025) excluded from the picker on request - the
+    // schedule's planned baseline starts there but there's no real work yet.
+    const years = [...new Set(weeksForLevel('year', f).map(fyStartOf).filter(v => v != null && v !== 2025))].sort((a, b) => a - b);
     yearSel.innerHTML = '<option value="">All</option>' +
       years.map(y => `<option value="${y}">FY ${fyLabel(y)}</option>`).join('');
     yearSel.value = years.map(String).includes(f.year) ? f.year : '';
@@ -498,7 +548,7 @@ function renderSequence() {
   document.getElementById('seqWrap').innerHTML = `
     <ol class="seq-list">${ACTIVITY_SEQUENCE.map(a =>
       `<li>${esc(a)}${MAJOR_WEIGHTS[a] ? ` <span class="seq-weight">${MAJOR_WEIGHTS[a]}%</span>` : ''}</li>`).join('')}</ol>
-    <p class="hint">Majors carry weightage; an absent major's weight rolls forward to the next present major. An activity's progress cannot run ahead of the activity beneath it in the build order.</p>`;
+    <p class="hint">Majors carry weightage; an absent major's weight rolls forward to the next present major. This is the nominal build order only - progress may be entered for any activity in any sequence.</p>`;
 }
 
 /* =====================================================================
@@ -604,8 +654,8 @@ let EXPANDED_ROAD = null;
 function setLiveStatus(msg, isError, opts) {
   opts = opts || {};
   // Road-scoped messages (saves, validation/gating errors, load failures for
-  // one road) render in a strip directly BELOW that road's detail panel, not
-  // in the global strip at the top of the Live panel. Pass {global:true} to
+  // one road) render in a strip directly ABOVE that road's action buttons,
+  // not in the global strip at the top of the Live panel. Pass {global:true} to
   // force the top strip (e.g. a whole-page reload).
   const rn = opts.global ? null : (opts.roadNo != null ? opts.roadNo : EXPANDED_ROAD);
   if (rn != null) {
@@ -674,6 +724,12 @@ function roadBottleneckPill(road) {
   if (!n) return '';
   return `<button type="button" class="pill pill-bad" data-goto-bottlenecks="1"` +
          ` title="${n} flagged ${n === 1 ? 'activity' : 'activities'} - view Bottlenecks">⚠️ ${n}</button>`;
+}
+
+function roadOverPlannedPill(road) {
+  const n = road.over_planned_count || 0;
+  if (!n) return '';
+  return `<span class="pill pill-bad" title="${n} ${n === 1 ? 'activity has' : 'activities have'} actual qty above its planned qty - % is shown capped at 100%. Raise the planned qty in Edit Activities.">⚠ ${n} actual &gt; planned</span>`;
 }
 
 function setNavBadge(tab, count, variant) {
@@ -916,19 +972,20 @@ function toggleAddRoadForm(show) {
 }
 
 function weeklyHistoryRows(activityId, entries) {
-  if (!entries.length) return '<tr><td colspan="5">No weekly entries yet.</td></tr>';
+  if (!entries.length) return '<tr><td colspan="6">No entries yet.</td></tr>';
   return entries.map(e => `
-    <tr${e.out_of_schedule ? ' class="week-out-of-schedule"' : ''}>
-      <td>${fmtDate(e.week_start_date)}${e.out_of_schedule ? ' <span class="hint">(outside planned schedule)</span>' : ''}</td>
+    <tr>
+      <td>${fmtDate(e.week_start_date)}</td>
+      <td>${e.entered_at ? fmtDate(e.entered_at.slice(0, 10)) : '-'}</td>
       <td>${fmt(e.actual_this_week)}</td>
       <td>${fmt(e.cumulative_actual)}</td>
       <td>${e.cumulative_pct == null ? '-' : e.cumulative_pct + '%'}</td>
       <td class="wrap">${esc(e.note)}</td>
-      <td><button class="btn-small btn-danger" data-del-week="${e.week_start_date}" data-act="${activityId}">Delete</button></td>
+      <td><button class="btn-small btn-danger" data-del-entry="${e.entry_id}" data-act="${activityId}">Delete</button></td>
     </tr>`).join('');
 }
 
-// The per-activity summary row in the "Weekly Data" panel (Cum. Actual, %
+// The per-activity summary row in the "View Past Data" panel (Cum. Actual, %
 // Complete) is built once from a cached snapshot and does not auto-refresh.
 // Call this after every load/save/delete below so that row - and the cached
 // road.activities entry other panels read from - never goes stale.
@@ -960,22 +1017,22 @@ async function renderWeeklyPanel(activityId, wrapEl) {
     syncWeeklySummaryRow(activityId, entries);
     wrapEl.innerHTML = `
       <table class="data-table sub weekly-table">
-        <thead><tr><th>Week (Mon)</th><th>Actual (week)</th><th>Cum. Actual</th><th>Cum. %</th><th>Note</th><th></th></tr></thead>
+        <thead><tr><th>Week (Mon)</th><th>Entered</th><th>Actual (this entry)</th><th>Cum. Actual</th><th>Cum. %</th><th>Note</th><th></th></tr></thead>
         <tbody>${weeklyHistoryRows(activityId, entries)}</tbody>
       </table>
       <div class="form-row weekly-form">
         <input type="date" class="wk-date" value="${todayISO()}" title="Any day of the week - it is recorded against that week">
-        <input type="number" class="wk-actual" placeholder="actual qty">
+        <input type="number" class="wk-actual" placeholder="actual qty (adds to total)">
         <input type="number" class="wk-planned" placeholder="planned override (optional)">
         <input type="text" class="wk-note" placeholder="note (optional)">
-        <button class="btn-small btn-save wk-submit">Add / Update Week</button>
+        <button class="btn-small btn-save wk-submit">Add Entry</button>
       </div>
-      <p class="hint wk-weeknote">Recorded against week <b>${weekLabel(todayISO())}</b>. Pick any day in a week - no need to pick the Monday.</p>`;
-    wrapEl.querySelectorAll('[data-del-week]').forEach(btn => btn.addEventListener('click', async () => {
-      if (!window.confirm('Delete this weekly entry?')) return;
+      <p class="hint wk-weeknote">Recorded against week <b>${weekLabel(todayISO())}</b>. Each entry <b>adds to</b> the running total - it does not replace a week. Pick any day in a week.</p>`;
+    wrapEl.querySelectorAll('[data-del-entry]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!window.confirm('Delete this entry?')) return;
       try {
-        await dbSend('DELETE', `/api/db/activities/${btn.dataset.act}/weekly/${btn.dataset.delWeek}`);
-        setLiveStatus('Weekly entry deleted.', false);
+        await dbSend('DELETE', `/api/db/activities/${btn.dataset.act}/weekly/${btn.dataset.delEntry}`);
+        setLiveStatus('Entry deleted.', false);
         await renderWeeklyPanel(activityId, wrapEl);
         await refreshLiveRoads();
       } catch (err) { setLiveStatus('Delete failed: ' + err.message, true); }
@@ -985,7 +1042,7 @@ async function renderWeeklyPanel(activityId, wrapEl) {
     wkDateEl.addEventListener('change', () => {
       const lbl = weekLabel(wkDateEl.value);
       wkNoteEl.innerHTML = lbl
-        ? `Recorded against week <b>${lbl}</b>. Pick any day in a week - no need to pick the Monday.`
+        ? `Recorded against week <b>${lbl}</b>. Each entry <b>adds to</b> the running total - it does not replace a week. Pick any day in a week.`
         : 'Pick a date.';
     });
     wrapEl.querySelector('.wk-submit').addEventListener('click', async () => {
@@ -1004,19 +1061,45 @@ async function renderWeeklyPanel(activityId, wrapEl) {
         setLiveStatus('Weekly entry saved.', false);
         await renderWeeklyPanel(activityId, wrapEl);
         await refreshLiveRoads();
-      } catch (err) { setLiveStatus('Weekly save failed (gating/validation): ' + err.message, true); }
+      } catch (err) { setLiveStatus('Weekly save failed: ' + err.message, true); }
     });
   } catch (err) {
     wrapEl.innerHTML = `<p class="hint">Could not load weekly history: ${esc(err.message)}</p>`;
   }
 }
 
+// Hide activity rows in road `rn` whose [start,end] range does not overlap
+// the [from,to] window. Empty from/to = unbounded that side; an activity with
+// no start (or no end) date is treated as unbounded on that side and so always
+// shows. Overlap rule: start <= to AND end >= from.
+function applyActivityDateFilter(rn, from, to) {
+  const detail = document.getElementById('live-detail-' + rn);
+  if (!detail) return;
+  detail.querySelectorAll('tr.live-activity-row').forEach(row => {
+    const s = row.dataset.start || '';
+    const e = row.dataset.end || '';
+    let show = true;
+    if (to && s && s > to) show = false;      // starts after the window
+    if (from && e && e < from) show = false;   // ends before the window
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+// A small inline warning shown next to an activity's % when its actual qty
+// has run past its planned qty - the % itself is capped at 100 (never shown
+// above), this pill is the prompt to go raise planned_qty in Edit Activities.
+function overPlannedWarning(a) {
+  if (!a.over_planned) return '';
+  return ` <span class="pill pill-bad" title="Actual (${fmt(a.cum_qty)}) exceeds planned (${fmt(a.planned_qty)}). Raise the planned qty in Edit Activities.">⚠ actual &gt; planned</span>`;
+}
+
 function liveActivityRow(a) {
   return `
-    <tr class="live-activity-row" data-act="${a.activity_id}">
-      <td class="wrap">${esc(a.raw_name)}</td><td>${esc(a.major) || '-'}</td><td>${a.weight_pct}%</td>
+    <tr class="live-activity-row" data-act="${a.activity_id}" data-start="${a.start_date || ''}" data-end="${a.end_date || ''}">
+      <td class="wrap">${esc(a.raw_name)}</td><td>${a.weight_pct}%</td>
       <td>${esc(a.unit)}</td><td>${fmt(a.planned_qty)}</td>
-      <td>${fmt(a.cum_qty)}</td><td>${a.pct == null ? '-' : a.pct + '%'}</td>
+      <td>${fmtDate(a.start_date)}</td><td>${fmtDate(a.end_date)}</td>
+      <td>${fmt(a.cum_qty)}</td><td>${a.pct == null ? '-' : a.pct + '%'}${overPlannedWarning(a)}</td>
     </tr>`;
 }
 
@@ -1027,7 +1110,7 @@ function liveActivityEditRow(road, a) {
     <tr class="live-activity-row" data-act="${a.activity_id}">
       <td class="wrap">${esc(a.raw_name)}</td><td>${esc(a.major) || '-'}</td><td>${a.weight_pct}%</td>
       <td>${esc(a.unit)}</td><td>${fmt(a.planned_qty)}</td>
-      <td>${fmt(a.cum_qty)}</td><td>${a.pct == null ? '-' : a.pct + '%'}</td>
+      <td>${fmt(a.cum_qty)}</td><td>${a.pct == null ? '-' : a.pct + '%'}${overPlannedWarning(a)}</td>
       <td>
         <button class="btn-small btn-edit" data-edit-act="${a.activity_id}">Edit</button>
       </td>
@@ -1037,14 +1120,14 @@ function liveActivityEditRow(road, a) {
     </tr>`;
 }
 
-// Row for the "Weekly Data" panel: a View/Hide toggle that reveals the activity's
+// Row for the "View Past Data" panel: a View/Hide toggle that reveals the activity's
 // full weekly history (view + add/update + delete) via renderWeeklyPanel.
 function liveActivityWeeklyRow(a) {
   return `
     <tr class="live-activity-row" data-act="${a.activity_id}">
       <td class="wrap">${esc(a.raw_name)}</td><td>${esc(a.unit)}</td>
       <td>${fmt(a.planned_qty)}</td><td>${fmt(a.cum_qty)}</td>
-      <td>${a.pct == null ? '-' : a.pct + '%'}</td>
+      <td>${a.pct == null ? '-' : a.pct + '%'}${overPlannedWarning(a)}</td>
       <td><button class="btn-small btn-edit" data-weekly-act="${a.activity_id}">View / Update</button></td>
     </tr>
     <tr class="live-activity-weekly" id="act-weekly-${a.activity_id}" hidden>
@@ -1067,16 +1150,16 @@ function roadWeeklyInputRow(a) {
 // "Weekly" button in the default view.
 //
 // Each input is the quantity done IN THAT WEEK (a delta), same meaning as the
-// per-activity "Weekly Data" panel's "actual qty" field - NOT a running
+// per-activity "View Past Data" panel's "actual qty" field - NOT a running
 // cumulative total. weekly_entry rows are summed across weeks everywhere
 // (calculations.py) to produce the running total shown in "Current Cum.".
-// Entering again for the same week replaces that week's figure (upsert on
-// activity_id, week_start_date); it does not add to it.
+// Entering again for the same week ADDS to that week's figure (append-only
+// ledger); it does not replace it.
 function renderRoadWeeklyPanel(road, wrapEl) {
   const acts = road.activities || [];
   wrapEl.innerHTML = `
     <div class="detail-box">
-      <p class="hint">Enter the actual quantity done <b>this week</b> for each activity (not the running total). Leave an activity blank to skip it. Entering again for the same week replaces that week's figure.</p>
+      <p class="hint">Enter the actual quantity done <b>this week</b> for each activity (not the running total). Leave an activity blank to skip it. Entering again for the same week <b>adds to</b> that week's figure.</p>
       <div class="form-row weekly-form">
         <label>Date</label>
         <input type="date" class="rwk-date" value="${todayISO()}">
@@ -1136,7 +1219,7 @@ function renderRoadWeeklyPanel(road, wrapEl) {
     if (failed.length) {
       setLiveStatus(`Road ${road.road_no}: saved ${ok}/${inputs.length}. Problems - ${failed.join('; ')}`, true);
     } else {
-      setLiveStatus(`Weekly update for Road ${road.road_no}: all ${ok} activities saved.`, false);
+      setLiveStatus(`Weekly update for Road ${road.road_no}: ${ok} ${ok === 1 ? 'activity' : 'activities'} saved.`, false);
     }
     // Always refresh, even on a partial failure - the activities that DID
     // save are already committed in the DB and must show their new numbers.
@@ -1172,12 +1255,12 @@ function renderRoadActivitiesEditor(road, wrapEl) {
   }));
 }
 
-// "Weekly Data" panel: per-activity weekly history, view + update + delete.
+// "View Past Data" panel: per-activity entry history, view + delete.
 function renderRoadWeeklyData(road, wrapEl) {
   const acts = road.activities || [];
   wrapEl.innerHTML = `
     <div class="detail-box">
-      <p class="hint">View or correct the recorded weekly history for a single activity. Open one to add, update, or delete a specific week.</p>
+      <p class="hint">View the recorded entries for a single activity. Open one to see every submission and add or delete individual entries.</p>
       <div class="table-scroll">
       <table class="data-table sub">
         <thead><tr><th>Activity</th><th>Unit</th><th>Planned</th><th>Cum. Actual</th><th>% Complete</th><th></th></tr></thead>
@@ -1244,15 +1327,15 @@ function liveRoadBlock(road) {
   const open = EXPANDED_ROAD === road.road_no;
   const acts = road.activities;
   const bodyHtml = acts == null
-    ? '<tr><td colspan="7" class="hint">Loading activities...</td></tr>'
-    : (acts.map(a => liveActivityRow(a)).join('') || '<tr><td colspan="7">No activities.</td></tr>');
+    ? '<tr><td colspan="8" class="hint">Loading activities...</td></tr>'
+    : (acts.map(a => liveActivityRow(a)).join('') || '<tr><td colspan="8">No activities.</td></tr>');
   return `
     <tbody class="live-road-group">
       <tr class="road-head live-road-head${open ? ' open' : ''}" data-live-road="${road.road_no}">
         <td>${road.road_no}</td><td class="wrap">${esc(road.location)}</td><td class="wrap">${esc(road.vendor)}</td>
         <td class="wrap">${esc(road.line_manager)}</td><td>${esc(road.road_type)}</td>
         <td>${fmtDate(road.start_date)}</td><td>${fmtDate(road.end_date)}</td>
-        <td>${road.progress_pct == null ? '-' : road.progress_pct + '%'}${roadStatusPill(road)}${roadBottleneckPill(road)}${roadCompletionBar(road)}</td>
+        <td>${road.progress_pct == null ? '-' : road.progress_pct + '%'}${roadStatusPill(road)}${roadBottleneckPill(road)}${roadOverPlannedPill(road)}${roadCompletionBar(road)}</td>
         <td>${road.drain_progress_pct == null ? '-' : road.drain_progress_pct + '%'}</td>
         <td><button class="btn-small btn-edit" data-edit-road="${road.road_no}">Edit Road</button></td>
       </tr>
@@ -1260,9 +1343,10 @@ function liveRoadBlock(road) {
         <td colspan="10">
           <div class="detail-box">
             <form class="edit-form" id="road-edit-${road.road_no}" data-kind="road" data-id="${road.road_no}" hidden></form>
+            <div class="road-status" id="road-status-${road.road_no}" hidden></div>
             <div class="form-row no-print" style="margin:0 0 12px;">
-              <button class="btn-small btn-edit" data-road-weekly="${road.road_no}">Weekly Update (Whole Road)</button>
-              <button class="btn-small btn-edit" data-road-weeklydata="${road.road_no}">Weekly Data</button>
+              <button class="btn-small btn-edit" data-road-weekly="${road.road_no}">Update (whole Road)</button>
+              <button class="btn-small btn-edit" data-road-weeklydata="${road.road_no}">View Past Data</button>
               <button class="btn-small btn-edit" data-road-bottlenecks="${road.road_no}">Bottlenecks</button>
               <button class="btn-small btn-edit" data-road-pyramid="${road.road_no}">Parallel Working</button>
               <button class="btn-small btn-edit" data-road-editacts="${road.road_no}">Edit Activities</button>
@@ -1272,10 +1356,17 @@ function liveRoadBlock(road) {
             <div class="road-bottlenecks-wrap" id="road-bottlenecks-${road.road_no}" hidden></div>
             <div class="road-pyramid-wrap" id="road-pyramid-${road.road_no}" hidden></div>
             <div class="road-editacts-wrap" id="road-editacts-${road.road_no}" hidden></div>
-            <div class="road-status" id="road-status-${road.road_no}" hidden></div>
+            <div class="form-row no-print act-date-filter" data-road="${road.road_no}" style="margin:0 0 8px;gap:6px;align-items:center;">
+              <label class="hint">Activity dates</label>
+              <span class="hint">from</span>
+              <input type="date" class="act-filter-from" title="Show activities on or after this date">
+              <span class="hint">to</span>
+              <input type="date" class="act-filter-to" title="Show activities on or before this date">
+              <button type="button" class="btn-small btn-edit act-filter-clear">Clear</button>
+            </div>
             <div class="table-scroll">
             <table class="data-table sub">
-              <thead><tr><th>Activity</th><th>Major</th><th>Weight</th><th>Unit</th><th>Planned</th><th>Cum. Actual</th><th>% Complete</th></tr></thead>
+              <thead><tr><th>Activity</th><th>Weight</th><th>Unit</th><th>Planned</th><th>Start</th><th>End</th><th>Cum. Actual</th><th>% Complete</th></tr></thead>
               <tbody>${bodyHtml}</tbody>
             </table>
             </div>
@@ -1310,7 +1401,11 @@ function wireLiveRoadsEvents() {
   document.querySelectorAll('.live-road-head').forEach(h => h.addEventListener('click', (e) => {
     if (e.target.closest('button')) return;
     const rn = Number(h.dataset.liveRoad);
-    EXPANDED_ROAD = (EXPANDED_ROAD === rn) ? null : rn;
+    const closing = EXPANDED_ROAD === rn;
+    EXPANDED_ROAD = closing ? null : rn;
+    // Closing this road's row clears any status message it was showing, so
+    // reopening it later doesn't resurface a stale save/error message.
+    if (closing && ROAD_STATUS && ROAD_STATUS.roadNo === rn) ROAD_STATUS = null;
     renderLiveRoadsTable();
     if (EXPANDED_ROAD === rn) ensureRoadActivities(rn);
   }));
@@ -1323,7 +1418,21 @@ function wireLiveRoadsEvents() {
     const formEl = document.getElementById('road-edit-' + rn);
     if (formEl && road) buildEditForm(formEl, 'road', rn, ROAD_EDIT_FIELDS, road);
   }));
-  // The three road-detail panels (Weekly Update / Weekly Data / Edit Activities)
+  // Per-road from/to date filter: hide activity rows whose [start,end] range
+  // does not overlap the picked window. Pure DOM filtering off the row's
+  // data-start/data-end; undated activities always show.
+  document.querySelectorAll('.act-date-filter').forEach(bar => {
+    const rn = bar.dataset.road;
+    const fromEl = bar.querySelector('.act-filter-from');
+    const toEl = bar.querySelector('.act-filter-to');
+    const apply = () => applyActivityDateFilter(rn, fromEl.value, toEl.value);
+    fromEl.addEventListener('change', apply);
+    toEl.addEventListener('change', apply);
+    bar.querySelector('.act-filter-clear').addEventListener('click', () => {
+      fromEl.value = ''; toEl.value = ''; apply();
+    });
+  });
+  // The three road-detail panels (Update whole Road / View Past Data / Edit Activities)
   // are mutually exclusive - opening one closes the other two.
   const closeRoadPanels = (rn, except) => {
     [['road-weekly-', 'weekly'], ['road-weeklydata-', 'weeklydata'],

@@ -85,11 +85,18 @@ Phase 1 total length = 5,065 m. A road's length share is its own
 weightage ("more running meter → more weightage"), e.g. Road 3 at 800 m
 carries 15.79% of the programme.
 
-### BR-08 — Dependency gating (percentage-based)
-An activity's actual % cannot exceed the actual % of the activity
+### BR-08 — Dependency gating (percentage-based) — SUPERSEDED (2026-10-13)
+~~An activity's actual % cannot exceed the actual % of the activity
 immediately before it (in BR-03 order, counting only activities present on
 that road). A layer cannot be ahead of the layer beneath it. Entry that
-breaches this is rejected with a readable message.
+breaches this is rejected with a readable message.~~
+
+**Superseded by user ruling (2026-10-13):** progress may now be entered for
+any activity in any order — there is no sequencing requirement. The gating
+check is removed from the write path and from `calculations.py`; nothing
+rejects an activity that runs ahead of the one before it. The pyramid /
+"Parallel Working" view simply fills each layer by its own actual %, so an
+upper layer may legitimately show ahead of a lower one.
 
 ### BR-09 — Drain
 Tracked in running metres (RMT) with its own % complete:
@@ -155,6 +162,13 @@ weekly progress, is the figure entered **in that activity's own unit**
 (e.g. 120 Cum of Excavation), with
 `% = cumulative ÷ planned qty`? Or is a direct % entered instead?
 **Blocks:** weekly entry screen, all actual-based figures.
+
+**Ruling (2026-10-13):** the figure entered is the quantity done in that
+activity's own unit, as a **delta** (not a running total). Every submission
+is appended as its own `weekly_entry` ledger row — a second entry in the
+same week **adds to** the week's figure, it does not replace it — so the
+user can update any number of times a week. Cumulative is always
+`SUM(actual_qty)`; `% = cumulative ÷ planned qty`.
 
 ### OPEN-02 — Planned spread across weeks
 The source gives each activity one start date and one end date, plus a
