@@ -13,7 +13,7 @@ build/run/rebuild mechanics.
 | **DB** (`db/00_schema.sql`, `db/01_seed.sql`) | Schema is idempotent (`IF NOT EXISTS`) and now also has `manual_issue` (manual bottleneck log); seed is generated as `ON CONFLICT DO NOTHING`. Dry-run-verified against the dataset (17 roads, 177 activities, 10 data issues). **Never executed against a live Postgres in any session** this doc knows of. 6 tables: `road`, `activity`, `weekly_entry`, `data_issue`, `edit_log`, `manual_issue`. |
 | **DB — backup/restore** (`db/03_backup.sql`, `db/04_restore.sql`) | **Obsolete in the normal flow** — `rebuild.sh` no longer drops the schema and no longer calls them. Written for the old destructive rebuild, never executed; manual option only. `db/02_verify.sql` is still run by `rebuild.sh`. |
 | **API — static tier** (`/api/overview`, `/api/refresh`) | **Removed.** `dashboard/main.py` serves only `/api/db/*` and static files; there is no JSON data tier and no `data/*.json` files in the repo any more. |
-| **API — DB tier** (`/api/db/*` in `dashboard/db_routes.py`) | Code-complete: roads, road detail, weekly entry (GET/POST/DELETE with BR-08 gating), master-data editing (`PUT /roads/{n}`, `PUT /activities/{id}`), `GET /edit-log`, `GET /weight-audit`, overview, vendor/LM performance, bottlenecks, milestones, critical path, data issues. Verified only by import/syntax check — **never run against a live DB**, since §0 above means there's nothing to query yet. Also: `POST /roads` (Add Road), manual bottleneck CRUD (`/manual-bottlenecks`), `POST /weekly/import-csv`, `GET /export/weekly-history`, `GET /export/summary`; several GETs accept `line_manager`. |
+| **API — DB tier** (`/api/db/*` in `dashboard/db_routes.py`) | Code-complete: roads, road detail, weekly entry (GET/POST append-only ledger, DELETE by `entry_id`; BR-08 gating removed 2026-10-13), master-data editing (`PUT /roads/{n}`, `PUT /activities/{id}`), `GET /edit-log`, `GET /weight-audit`, overview, vendor/LM performance, bottlenecks, milestones, critical path, data issues. Verified only by import/syntax check — **never run against a live DB**, since §0 above means there's nothing to query yet. Also: `POST /roads` (Add Road), manual bottleneck CRUD (`/manual-bottlenecks`), `POST /weekly/import-csv`, `GET /export/weekly-history`, `GET /export/summary`; several GETs accept `line_manager`. |
 | **UI** (`dashboard/static/`) | Wired entirely to `/api/db/*` — KPI row and roads table from `GET /api/db/roads`, weight chart from `GET /api/db/overview`, data issues from `GET /api/db/data-issues`, plus the weekly data-entry and master-data edit forms (`livePanel`). The Canonical Activity Sequence panel is the one exception: it renders fixed `ACTIVITY_SEQUENCE`/`MAJOR_WEIGHTS` constants (mirrored from `scripts/config.py`) since those are programme rulings, not seeded data. |
 
 ### Open items that block trusting the numbers
@@ -78,7 +78,9 @@ it; change it through the UI (`PUT` routes) or by hand in SQL.
 separate `tata_road_backup` schema) are **no longer called** by `rebuild.sh`.
 They date from the old `DROP SCHEMA` rebuild and were never executed; keep
 them only as a manual safety option. If you use them, note `04_restore.sql`
-remaps weekly rows by `(road_no, sheet_row_order)`, not `activity_id`.
+remaps weekly rows by `(road_no, sheet_row_order)`, not `activity_id`, and is
+re-runnable (`NOT EXISTS` anti-join; it no longer needs the removed
+`UNIQUE (activity_id, week_start_date)`).
 
 Once this exits clean, start the server with a plain command:
 ```bash
@@ -175,7 +177,7 @@ been exercised end to end; Vercel never runs `rebuild.sh`.
   all of them untouched and adds only new workbook rows. Not exercised.
 - **API (DB tier)**: done = each `/api/db/*` route returns correct data
   against a rebuilt DB, including a round-trip `POST .../weekly` entry that
-  correctly triggers BR-08 gating on a bad value. Not exercised yet — code
+  adds to the activity's cumulative (a second same-week POST appends a row; BR-08 gating no longer exists). Not exercised yet — code
   exists, behavior unverified.
 - **API — edit layer**: done = a `PUT /api/db/roads/{n}` and a
   `PUT /api/db/activities/{id}` each change only the supplied fields, write one
@@ -185,7 +187,6 @@ been exercised end to end; Vercel never runs `rebuild.sh`.
   100 total. Also unexercised — same reason.
 - **UI**: done = the dashboard reads live `/api/db/*` data AND has a working
   weekly entry screen AND road/activity edit forms that surface the `409`
-  messages (source-override confirm step, BR-05 weight message, BR-08 gating
-  message) rather than failing silently. The read/write wiring to `/api/db/*`
+  messages (source-override confirm step, BR-05 weight message) rather than failing silently. The read/write wiring to `/api/db/*`
   is in place (`dashboard/static/dashboard.js`); still unverified end-to-end
   against a rebuilt DB for the same reason as the rows above.
