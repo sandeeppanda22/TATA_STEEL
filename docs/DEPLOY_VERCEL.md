@@ -69,7 +69,7 @@ psql "$DATABASE_URL" -f db/01_seed.sql
 ```
 
 The schema is `tata_road`; the app sets `search_path` itself on every
-connection, so no role-level default is needed. Because both files are
+connection (as a `SET` statement in `db.get_conn()`, which works on Neon's pooled PgBouncer endpoint where a startup `options` parameter would be rejected), so no role-level default is needed. Because both files are
 incremental, re-running them after the workbook changes only adds new
 roads/activities/issues and never drops entered weekly actuals.
 

@@ -26,7 +26,7 @@ An earlier stdlib/SQLite app still sits in the repo root (`server.py`, `index.ht
 - `weekly_entry.actual_qty` is **that week's quantity (a delta)**; cumulative = `SUM(actual_qty)`. Weeks are Monday–Sunday, keyed by `week_start_date`; `submit_weekly_entry` snaps any date to its Monday. (The legacy SQLite app stores cumulative instead — don't mix them up.)
 - BR-08 gating (activity % ≤ previous present activity's %) is enforced in the API at write time (`_validate_gating` in `db_routes.py`, both directions, HTTP 409), not in SQL. A near-duplicate `check_gating` in `calculations.py` is forward-only and raises `ValueError`.
 - Edits to `road`/`activity` go through `PUT` routes, are logged field-by-field in `edit_log`, and edits to BR-01/BR-02 source fields need `confirm_source_override=true` (else 409).
-- All SQL uses unqualified table names; `db.get_conn()` sets `search_path=tata_road,public` on every connection.
+- All SQL uses unqualified table names; `db.get_conn()` runs `SET search_path TO tata_road, public` right after connecting (not as a libpq `options` startup parameter — Neon's pooled PgBouncer endpoint rejects that).
 
 ## Gotchas
 
