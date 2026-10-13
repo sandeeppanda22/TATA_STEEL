@@ -1,0 +1,35 @@
+# Render Blueprint for the Tata Steel Road Programme dashboard.
+# One long-lived FastAPI web service (not serverless) — Render runs the
+# uvicorn process directly, so there are no cold starts and none of the
+# PgBouncer startup-parameter quirks that affected the serverless path.
+#
+# To deploy: Render Dashboard -> New -> Blueprint -> point at this repo.
+# Render reads this file, creates the service, and asks you to fill in the
+# one secret marked `sync: false` (DATABASE_URL). See docs/DEPLOY_RENDER.md.
+services:
+  - type: web
+    name: tata-steel-dashboard
+    runtime: python
+    plan: free
+    # Singapore is the closest Render region to the Neon ap-southeast-1
+    # (Singapore) database — keeps DB round-trips fast.
+    region: singapore
+    branch: main
+    # No front-end build (plain HTML/JS/CSS). render_build.sh installs deps
+    # and, on the first deploy, bootstraps the tata_road schema + seed into
+    # Neon via DATABASE_URL (existence-gated — never drops or overwrites data).
+    buildCommand: bash render_build.sh
+    # Render injects $PORT; bind to it and 0.0.0.0 so the service is reachable.
+    startCommand: uvicorn dashboard.main:app --host 0.0.0.0 --port $PORT
+    # Render pings this path for health; "/" serves the static front end (200).
+    healthCheckPath: /
+    envVars:
+      # Pin the Python version. psycopg2-binary ships wheels for 3.12;
+      # the local 3.14 is too new to rely on prebuilt wheels in CI.
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # The Neon connection string. Left as a secret you enter in the Render
+      # dashboard (sync: false) so the real password is never committed to git.
+      # Use the Neon POOLED endpoint host (…-pooler…) + ?sslmode=require.
+      - key: DATABASE_URL
+        sync: false
