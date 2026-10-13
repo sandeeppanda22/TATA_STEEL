@@ -1,4 +1,4 @@
--- Active: 1781338529178@@127.0.0.1@5432@tata_steel@public
+
 -- Tata Steel Road Programme — Phase 1+ schema
 -- Incremental DDL: idempotent, safe to re-run any time. CREATE SCHEMA/TABLE/
 -- INDEX all use IF NOT EXISTS, so re-running this file never drops or touches
