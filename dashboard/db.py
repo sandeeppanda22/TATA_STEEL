@@ -69,19 +69,34 @@ DEFAULTS = {
 # the server's own connections need it set explicitly here, or an unqualified
 # query 500s with "relation ... does not exist" the moment nothing else
 # happens to have set search_path on the connecting role.
-SEARCH_PATH_OPTIONS = "-c search_path=tata_road,public"
+#
+# This used to be passed as a libpq startup option (options="-c
+# search_path=..."), which works against a plain Postgres connection but
+# fails against Neon's pooled (PgBouncer) endpoint: PgBouncer rejects
+# search_path as a startup parameter outright ("unsupported startup
+# parameter in options: search_path"). Issuing it as a normal SET statement
+# right after connecting works everywhere - direct Postgres, Neon pooled,
+# and Neon unpooled alike - since it's just another statement in the same
+# session/transaction rather than something PgBouncer has to proxy at
+# connection setup.
+SEARCH_PATH_SQL = "SET search_path TO tata_road, public"
+
+
+def _with_search_path(conn):
+    with conn.cursor() as cur:
+        cur.execute(SEARCH_PATH_SQL)
+    return conn
 
 
 def get_conn():
     url = os.environ.get("DATABASE_URL")
     if url:
-        return psycopg2.connect(url, options=SEARCH_PATH_OPTIONS)
+        return _with_search_path(psycopg2.connect(url))
     kwargs = {
         "port": os.environ.get("PGPORT", DEFAULTS["port"]),
         "user": os.environ.get("PGUSER", DEFAULTS["user"]),
         "password": os.environ.get("PGPASSWORD"),
         "dbname": os.environ.get("PGDATABASE", DEFAULTS["dbname"]),
-        "options": SEARCH_PATH_OPTIONS,
     }
     host = os.environ.get("PGHOST")
     if host:
@@ -89,7 +104,7 @@ def get_conn():
     gssencmode = os.environ.get("PGGSSENCMODE")
     if gssencmode:
         kwargs["gssencmode"] = gssencmode
-    return psycopg2.connect(**kwargs)
+    return _with_search_path(psycopg2.connect(**kwargs))
 
 
 def query(sql, params=None):
