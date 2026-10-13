@@ -51,6 +51,14 @@ set -euo pipefail
 # This script lives at the repo root, so its own directory IS the repo root.
 cd "$(dirname "$0")"
 
+# ---- colours (only when stdout is a terminal; CI / piped logs stay plain) ---
+if [ -t 1 ]; then
+    C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'
+    C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'; C_CYAN=$'\033[36m'
+else
+    C_RESET=''; C_BOLD=''; C_GREEN=''; C_YELLOW=''; C_RED=''; C_CYAN=''
+fi
+
 PORT="${PORT:-8000}"
 
 ENV_FILE=".env"
@@ -78,34 +86,34 @@ fi
 export PGPORT PGUSER PGDATABASE PGGSSENCMODE
 [ -n "${PGHOST:-}" ] && export PGHOST
 
-echo "0/7 Stopping any dev server already running on port ${PORT} ..."
+echo "${C_CYAN}${C_BOLD}0/7 Stopping any dev server already running on port ${PORT} ...${C_RESET}"
 # Matches our own launcher (uvicorn dashboard.main:app) specifically, so this
 # never kills an unrelated process that happens to share the port.
 if pkill -f "uvicorn dashboard.main:app" 2>/dev/null; then
     sleep 1
-    echo "    stopped."
+    echo "    ${C_GREEN}stopped.${C_RESET}"
 else
     echo "    nothing running."
 fi
 
 echo
-echo "1/7 Checking API dependencies (fastapi, uvicorn, psycopg2, openpyxl) ..."
+echo "${C_CYAN}${C_BOLD}1/7 Checking API dependencies (fastapi, uvicorn, psycopg2, openpyxl) ...${C_RESET}"
 python3 -c "import fastapi, uvicorn, psycopg2, openpyxl" 2>/dev/null || \
     python3 -m pip install --break-system-packages fastapi uvicorn psycopg2-binary openpyxl
-echo "    ok."
+echo "    ${C_GREEN}ok.${C_RESET}"
 
 echo
-echo "2/7 Checking UI static assets (no build step - plain HTML/JS/CSS) ..."
+echo "${C_CYAN}${C_BOLD}2/7 Checking UI static assets (no build step - plain HTML/JS/CSS) ...${C_RESET}"
 for f in dashboard/static/index.html dashboard/static/dashboard.js dashboard/static/style.css; do
     if [ ! -f "$f" ]; then
-        echo "Missing required UI asset: $f" >&2
+        echo "${C_RED}Missing required UI asset: $f${C_RESET}" >&2
         exit 1
     fi
 done
-echo "    ok."
+echo "    ${C_GREEN}ok.${C_RESET}"
 
 if [ -z "${PGPASSWORD:-}" ] && [ ! -f "$HOME/.pgpass" ]; then
-    printf 'Password for %s@%s: ' "$PGUSER" "${PGHOST:-local socket}" >&2
+    printf '%sPassword for %s@%s:%s ' "$C_CYAN" "$PGUSER" "${PGHOST:-local socket}" "$C_RESET" >&2
     read -rs PGPASSWORD
     printf '\n' >&2
     export PGPASSWORD
@@ -131,37 +139,37 @@ echo
 echo "Target: $PGUSER@${PGHOST:-local socket}:$PGPORT/$PGDATABASE"
 
 echo
-echo "3/7 Rebuilding dataset from Source/ ..."
+echo "${C_CYAN}${C_BOLD}3/7 Rebuilding dataset from Source/ ...${C_RESET}"
 python3 scripts/build_data.py
 
 echo
-echo "4/7 Regenerating seed SQL from Source/ (in-memory, no dataset.json) ..."
+echo "${C_CYAN}${C_BOLD}4/7 Regenerating seed SQL from Source/ (in-memory, no dataset.json) ...${C_RESET}"
 (cd scripts && python3 gen_seed.py)
 
 echo
-echo "5/7 Pre-flight check on the generated seed ..."
+echo "${C_CYAN}${C_BOLD}5/7 Pre-flight check on the generated seed ...${C_RESET}"
 # Checks the dataset and the generated SQL BEFORE anything touches the DB -
 # BR-05 weight totals, BR-04 major classification, DDL constraints, literal
 # safety. Loading a seed that fails here puts known-wrong numbers in front of
 # people, so the rebuild stops.
 if ! python3 scripts/verify_seed.py; then
     if [ "${FORCE:-0}" = "1" ]; then
-        echo "!! Pre-flight FAILED - continuing because FORCE=1." >&2
-        echo "!! The loaded data will contain the defects listed above." >&2
+        echo "${C_RED}!! Pre-flight FAILED - continuing because FORCE=1.${C_RESET}" >&2
+        echo "${C_RED}!! The loaded data will contain the defects listed above.${C_RESET}" >&2
     else
         echo >&2
-        echo "Pre-flight failed. Nothing was written to the database." >&2
-        echo "Fix the defect above, or re-run with FORCE=1 to load it anyway." >&2
+        echo "${C_RED}Pre-flight failed. Nothing was written to the database.${C_RESET}" >&2
+        echo "${C_RED}Fix the defect above, or re-run with FORCE=1 to load it anyway.${C_RESET}" >&2
         exit 1
     fi
 fi
 
 echo
-echo "6/7 Applying schema (idempotent - creates only what's missing, drops nothing) ..."
+echo "${C_CYAN}${C_BOLD}6/7 Applying schema (idempotent - creates only what's missing, drops nothing) ...${C_RESET}"
 $PSQL -f db/00_schema.sql
 
 echo
-echo "7/7 Loading seed (incremental - ON CONFLICT DO NOTHING, adds only new roads/activities/issues) ..."
+echo "${C_CYAN}${C_BOLD}7/7 Loading seed (incremental - ON CONFLICT DO NOTHING, adds only new roads/activities/issues) ...${C_RESET}"
 $PSQL -f db/01_seed.sql
 
 echo
@@ -171,7 +179,7 @@ echo "Verifying ..."
 psql -f db/02_verify.sql
 
 echo
-echo "Done. tata_road now holds: $(psql -tAc "SELECT count(*) FROM tata_road.road") roads, $(psql -tAc "SELECT count(*) FROM tata_road.activity") activities, $(psql -tAc "SELECT count(*) FROM tata_road.weekly_entry") weekly entries."
+echo "${C_GREEN}${C_BOLD}Done.${C_RESET}${C_GREEN} tata_road now holds: $(psql -tAc "SELECT count(*) FROM tata_road.road") roads, $(psql -tAc "SELECT count(*) FROM tata_road.activity") activities, $(psql -tAc "SELECT count(*) FROM tata_road.weekly_entry") weekly entries.${C_RESET}"
 echo "Review the verify output above before trusting any percentage."
 echo
 echo "Server is NOT started. Start it yourself when ready:"
