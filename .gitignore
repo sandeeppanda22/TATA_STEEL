@@ -2,8 +2,7 @@ __pycache__/
 .DS_Store
 roadworks.db
 roadworks.db.bak-*
-.env
-.env.local
+.env*
 
 _write_test.md
 clipboard_image_*.jpg
