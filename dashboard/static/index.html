@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tata Steel - Road Infrastructure Dashboard (Phase 1)</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <button id="sidenavToggle" class="btn-sidenav-toggle" title="Show/hide sidebar">&#9776;</button>
+      <span class="brand-mark">TATA STEEL</span>
+      <span class="brand-sub">Road Infrastructure Programme &mdash; Phase 1</span>
+    </div>
+    <div class="topbar-actions no-print">
+      <span class="gen-note" id="genNote"></span>
+      <button id="refreshBtn" class="btn-refresh">Reload</button>
+      <button id="printBtn" class="btn-print">Print / Export</button>
+    </div>
+  </header>
+
+  <div class="sidenav-backdrop no-print" id="sidenavBackdrop"></div>
+  <div class="shell">
+    <nav class="sidenav no-print" id="sidenav">
+      <button class="nav-item active" data-tab="overview">Overview</button>
+      <button class="nav-item" data-tab="charts">Charts</button>
+      <button class="nav-item" data-tab="roads">Roads &amp; Progress</button>
+      <button class="nav-item" data-tab="critical-path">Critical Path</button>
+      <button class="nav-item" data-tab="performance">Vendor / LM Performance</button>
+      <button class="nav-item" data-tab="bottlenecks">Bottlenecks</button>
+      <button class="nav-item" data-tab="milestones">Milestones</button>
+      <button class="nav-item" data-tab="issues">Data Issues</button>
+      <button class="nav-item" data-tab="audit">Weight Audit</button>
+      <button class="nav-item" data-tab="editlog">Edit Log</button>
+    </nav>
+
+    <main id="app">
+      <section class="tab-panel active" data-tab-panel="overview">
+        <section class="kpi-row" id="kpiRow"></section>
+
+        <section class="panel" id="overallPanel">
+          <h2>Overall Programme Progress</h2>
+          <div id="overallWrap"></div>
+        </section>
+
+        <section class="panel chart-panel" id="weightPanel">
+          <h2>Length-Weighted Share by Road</h2>
+          <div id="weightChart"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="charts">
+        <div class="filter-bar no-print" id="chartFilterBar">
+          <label for="chartFilterYear">Financial Year
+            <select id="chartFilterYear" class="inline-input"><option value="">All</option></select>
+          </label>
+          <label for="chartFilterQuarter">Quarter
+            <select id="chartFilterQuarter" class="inline-input"><option value="">All</option></select>
+          </label>
+          <label for="chartFilterMonth">Month
+            <select id="chartFilterMonth" class="inline-input"><option value="">All</option></select>
+          </label>
+          <label for="chartFilterWeek">Week
+            <select id="chartFilterWeek" class="inline-input"><option value="">All</option></select>
+          </label>
+          <label for="chartFilterLm">Line Manager
+            <select id="chartFilterLm" class="inline-input"><option value="">All</option></select>
+          </label>
+          <button type="button" id="chartFilterClear" class="btn-filter-clear">Clear filters</button>
+          <span class="filter-count hint" id="chartFilterCount"></span>
+        </div>
+        <div class="chart-grid">
+          <section class="panel chart-card wide">
+            <h2>Cumulative Progress per Week &mdash; Actual vs Planned</h2>
+            <p class="hint">Cumulative % complete at the end of each week, actual against planned. Month-on-month and quarter-on-quarter movement shown above the chart.</p>
+            <div id="progressBarsWrap"></div>
+          </section>
+          <section class="panel chart-card">
+            <h2>Activity Status</h2>
+            <div id="statusDonutWrap"></div>
+          </section>
+          <section class="panel chart-card">
+            <h2>Progress by Road</h2>
+            <div id="barRoadWrap"></div>
+          </section>
+          <section class="panel chart-card">
+            <h2>Progress by Vendor</h2>
+            <div id="barVendorWrap"></div>
+          </section>
+          <section class="panel chart-card">
+            <h2>Progress by Line Manager</h2>
+            <div id="barLmWrap"></div>
+          </section>
+          <section class="panel chart-card wide">
+            <h2>Planned Parallel Working (by Road)</h2>
+            <p class="hint">Stacked in build order, foundation activity at the bottom. Each track fills by actual % complete; amber callouts mark where an activity started before its predecessor finished.</p>
+            <div class="form-row no-print" style="margin-bottom:12px;">
+              <label for="pyramidRoadSelect" class="hint" style="margin:0 10px 0 0;">Road:</label>
+              <select id="pyramidRoadSelect" class="inline-input" style="min-width:220px;"></select>
+            </div>
+            <div id="pyramidWrap"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="roads">
+        <section class="panel live-panel" id="livePanel">
+          <h2>Live Progress &amp; Data Entry (Database)</h2>
+          <p class="hint">
+            Weekly actuals and master-data corrections go here, straight into Postgres &mdash;
+            nothing on this page is placeholder data.
+          </p>
+          <div id="liveStatus" class="hint"></div>
+          <div class="form-row no-print" style="margin-bottom:12px; flex-wrap:wrap;">
+            <button type="button" id="addRoadToggle" class="btn-small">+ Add Road</button>
+            <button type="button" id="importCsvToggle" class="btn-small">Import Weekly CSV</button>
+            <a id="exportHistoryLink" class="btn-small" href="/api/db/export/weekly-history" download>Export History CSV</a>
+            <a id="exportSummaryLink" class="btn-small" href="/api/db/export/summary" download>Export Summary CSV</a>
+          </div>
+          <div id="importCsvFormWrap" class="panel no-print" style="display:none; margin-bottom:16px;"></div>
+          <div id="addRoadFormWrap" class="panel no-print" style="display:none; margin-bottom:16px;"></div>
+          <div class="filter-bar no-print" id="roadFilterBar">
+            <label for="roadFilterLm">Line Manager
+              <select id="roadFilterLm" class="inline-input"><option value="">All</option></select>
+            </label>
+            <label for="roadFilterVendor">Vendor
+              <select id="roadFilterVendor" class="inline-input"><option value="">All</option></select>
+            </label>
+            <label for="roadFilterType">Type
+              <select id="roadFilterType" class="inline-input"><option value="">All</option></select>
+            </label>
+            <button type="button" id="roadFilterClear" class="btn-filter-clear">Clear filters</button>
+            <span class="filter-count hint" id="roadFilterCount"></span>
+          </div>
+          <div id="liveRoadsWrap"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="critical-path">
+        <section class="panel" id="cpmPanel">
+          <h2>Critical Path (CPM) by Road</h2>
+          <p class="hint">The canonical build sequence is treated as the dependency chain; recorded start/end dates give duration and drive the Gantt schedule below. Overlaps between consecutive activities reflect planned parallel working (e.g. soil disposal starting once excavation is partway done) &mdash; not a data error.</p>
+          <div class="form-row no-print" style="margin-bottom:12px;">
+            <label for="cpmRoadSelect" class="hint" style="margin:0 10px 0 0;">Road:</label>
+            <select id="cpmRoadSelect" class="inline-input" style="min-width:220px;"></select>
+          </div>
+          <div id="cpmWrap"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="performance">
+        <section class="panel" id="vendorPerfPanel">
+          <h2>Vendor Performance</h2>
+          <div id="vendorPerfWrap"></div>
+        </section>
+        <section class="panel" id="lmPerfPanel">
+          <h2>Line Manager Performance</h2>
+          <div id="lmPerfWrap"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="bottlenecks">
+        <section class="panel" id="bottlenecksPanel">
+          <h2>Bottlenecks</h2>
+          <p class="hint">An activity is flagged if it is behind planned-to-date by more than 15 points, is holding up the next activity in sequence, or has had zero recorded progress for 3+ weeks since its start date.</p>
+          <div id="bottlenecksWrap"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="milestones">
+        <section class="panel" id="milestonesPanel">
+          <h2>Milestones</h2>
+          <p class="hint">Completed 25/50/100% marks per activity, plus a 30-day look-ahead (planned end date, and a progress-rate projection) for activities not yet finished.</p>
+          <div id="milestonesWrap"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="issues">
+        <section class="panel issues-panel" id="issuesPanel">
+          <h2>Data Issues in Source</h2>
+          <div id="issuesWrap"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="audit">
+        <section class="panel" id="auditPanel">
+          <h2>Weight Check &mdash; Roads Needing Attention</h2>
+          <p class="hint">Any road not totalling 100% weight, or carrying a duplicate major, is listed here with a direct link to fix it. No passive banner &mdash; fix it below or jump to the road's edit form on the Roads tab.</p>
+          <div id="weightAuditWrap"></div>
+        </section>
+        <section class="panel" id="seqPanel">
+          <h2>Activity Sequence &amp; Weightage</h2>
+          <div id="seqWrap"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="editlog">
+        <section class="panel" id="editLogPanel">
+          <h2>Edit Log</h2>
+          <label class="hint"><input type="checkbox" id="overrideOnlyChk"> show source-override edits only</label>
+          <div id="editLogWrap"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="./dashboard.js"></script>
+</body>
+</html>
