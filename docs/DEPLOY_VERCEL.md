@@ -139,10 +139,11 @@ seeded the Neon database.
 - **Cold starts.** The first request after idle re-imports the app and opens a
   new DB connection; expect a short delay. Neon's pooled endpoint keeps this
   manageable.
-- **No connection pooling in-process.** Each request opens its own psycopg2
-  connection (as the app already does). Always use Neon's **pooled** host, not
-  the direct host, so many short-lived function invocations don't exhaust
-  Postgres connections.
+- **In-process pool is per instance.** `dashboard/db.py` keeps a
+  `ThreadedConnectionPool` (up to 8 connections), but each serverless instance
+  has its own, and instances come and go. Always use Neon's **pooled** host,
+  not the direct host, so many function instances don't exhaust Postgres
+  connections.
 - **Read/write still works** (weekly entry, edits, Add Road) — these hit Neon
   like any other client. There is just no local DB and no `rebuild.sh` at
   deploy time.

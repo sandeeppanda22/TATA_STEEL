@@ -28,7 +28,7 @@ rebuild.sh orchestrates all of the above            dashboard/db_routes.py  (/ap
 - **Data tier.** Six tables in schema `tata_road` (`db/00_schema.sql`, idempotent `IF NOT EXISTS`): `road`, `activity`, `weekly_entry`, `data_issue`, `edit_log`, `manual_issue` (hand-logged bottlenecks). `road`/`activity` come from the workbook (or the "Add Road" form, stamped `source_file = 'manual-entry'`); `weekly_entry` is entered through the UI and starts empty on purpose, so every percentage reads 0% until real actuals exist.
 - **API tier.** `dashboard/main.py` creates the FastAPI app, includes the `/api/db` router from `dashboard/db_routes.py`, and mounts `dashboard/static/` at `/static` and at `/` (`html=True`) through `NoCacheStaticFiles` (forces revalidation so rebuilt JS/CSS is never stale). There is no JSON/static data tier any more.
 - **Calculation tier.** `dashboard/calculations.py` is the only place metrics are computed (road %, overall %, planned %, performance, bottlenecks, CPM, milestones, chart series). The browser renders what the API returns. The one exception is the "Canonical Activity Sequence" panel, which renders fixed `ACTIVITY_SEQUENCE` / `MAJOR_WEIGHTS` constants in `dashboard.js` mirrored from `scripts/config.py`.
-- **DB access.** `dashboard/db.py` is plain psycopg2 (no ORM): `get_conn()`, `query()` (→ list of dicts), `execute()`, `execute_returning()`. Each call opens a new connection. `search_path` is set to `tata_road,public` on every connection via a `SET` statement (`_with_search_path`, `SEARCH_PATH_SQL`) because the code uses unqualified table names; a startup `options` parameter was dropped because Neon's pooled PgBouncer endpoint rejects it. The module docstring in `db.py` still refers to the old `SEARCH_PATH_OPTIONS`.
+- **DB access.** `dashboard/db.py` is plain psycopg2 (no ORM): `get_conn()`, `query()` (→ list of dicts), `execute()`, `execute_returning()`. `get_conn()` is a context manager that borrows a connection from a lazily-created `psycopg2.pool.ThreadedConnectionPool` (`_POOL_MINCONN=1`, `_POOL_MAXCONN=8`, created on first use by `_get_pool()`) and always returns it in `finally`; it does not commit — `execute()`/`execute_returning()` commit explicitly. The pool exists because opening a fresh Neon connection per query (TCP + TLS + `SET`) made page loads slow. `search_path` is set to `tata_road,public` on every connection via a `SET` statement (`_with_search_path`, `SEARCH_PATH_SQL`) because the code uses unqualified table names; a startup `options` parameter was dropped because Neon's pooled PgBouncer endpoint rejects it. The module docstring in `db.py` still refers to the old `SEARCH_PATH_OPTIONS`.
 
 ## 3. Directory structure
 
@@ -96,6 +96,9 @@ Activity % = `SUM(actual_qty) / planned_qty × 100`. Road % (`road_progress`) = 
 
 ### 6.5 Add a road without touching Excel
 The Roads tab's "Add Road" form calls `POST /api/db/roads` (`create_road`, body `RoadCreate` with a list of `ActivityCreate`). The road is stored with `source_file = 'manual-entry'`; because rebuilds are additive it is never erased by `./rebuild.sh`.
+
+### 6.6 Dashboard page load
+`dashboard.js` `init()` loads its five panels concurrently (`Promise.all`: `refreshLiveRoads`, `renderIssues`, `renderWeightAudit`, `renderNavBadges`, `renderEditLog`), and `refreshLiveRoads()` fetches `/roads`, `/overview` and `/charts/activity-status` in parallel (the last may fail on its own; the overall panel then renders without it). Combined with the connection pool this removes the serial round-trips that made the first load slow.
 
 ## 7. API reference (`/api/db`)
 
