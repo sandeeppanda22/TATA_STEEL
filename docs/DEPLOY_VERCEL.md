@@ -2,7 +2,7 @@
 
 This deploys the FastAPI + static front end (`dashboard/`) to **Vercel** as a
 single Python serverless function, backed by a **Neon** PostgreSQL database.
-It mirrors the existing Render deployment path (`DATABASE_URL` → Neon); nothing
+It mirrors the Render deployment path (`DATABASE_URL` → Neon; see `DEPLOY_RENDER.md`); nothing
 in the app code is forked for Vercel.
 
 > **Scope.** This is the live `dashboard/` app only. The legacy root app

@@ -158,7 +158,8 @@ The static tier is gone — `/api/db/*` is the only API tier, and the UI
 `dashboard/db.py` checks `DATABASE_URL` first, before the local `PGHOST`/...
 vars, so deployment is just an env var pointing at a Neon database. Vercel
 packaging (`api/index.py`, `vercel.json`) and the one-time Neon seeding steps
-are in [`DEPLOY_VERCEL.md`](DEPLOY_VERCEL.md). Neither deployment path has
+are in [`DEPLOY_VERCEL.md`](DEPLOY_VERCEL.md); the Render Blueprint
+(`render.yaml`, `render_build.sh`) is in [`DEPLOY_RENDER.md`](DEPLOY_RENDER.md). Neither deployment path has
 been exercised end to end; Vercel never runs `rebuild.sh`.
 
 ---

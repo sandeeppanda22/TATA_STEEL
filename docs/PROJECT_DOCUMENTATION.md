@@ -37,9 +37,11 @@ rebuild.sh orchestrates all of the above            dashboard/db_routes.py  (/ap
 | `dashboard/` | The FastAPI app: `main.py`, `db.py`, `db_routes.py`, `calculations.py`, `static/` (see `dashboard/README.md`) |
 | `scripts/` | Excel → seed pipeline and checks: `config.py`, `build_data.py`, `gen_seed.py`, `verify_seed.py`, `diff_dates.py` (see `scripts/README.md`) |
 | `db/` | SQL: schema, generated seed, verify, backup, restore (see `db/README.md`) |
-| `docs/` | `01_business_rules.md` (rules/spec), `02_build_and_rebuild.md` (build mechanics), `DEPLOY_VERCEL.md` (Vercel + Neon), this file |
+| `docs/` | `01_business_rules.md` (rules/spec), `02_build_and_rebuild.md` (build mechanics), `DEPLOY_VERCEL.md` (Vercel + Neon), `DEPLOY_RENDER.md` (Render + Neon), this file |
 | `Source/` | Input workbook(s). Every `.xlsx` here is read and combined (BR-13) |
 | `rebuild.sh`, `run.bat`, `requirements.txt` | Incremental build script, Windows launcher, Python deps |
+| `02_build.sh`, `03_validate.sh` | `02_build.sh` is a thin wrapper that `exec`s `rebuild.sh`; `03_validate.sh` is a read-only DB health check (pass/warn/fail, exit 1 on any FAIL) |
+| `render.yaml`, `render_build.sh` | Render Blueprint (free web service, Singapore, Python 3.12.7, health check `/`) and its build script: installs deps, then existence-gated schema/seed bootstrap of the `DATABASE_URL` database; see `docs/DEPLOY_RENDER.md` |
 | `api/index.py`, `vercel.json` | Vercel serverless entry (re-exports `dashboard.main.app`) and catch-all rewrite; see `docs/DEPLOY_VERCEL.md` |
 | `session-logs/` | Notes on past Claude Code sessions (not part of the app) |
 | root `server.py`, `index.html`, `calc.py`, `plan.csv`, `bottlenecks.csv`, `weekly_*.csv`, `roadworks.db*` | Earlier SQLite app (§8) |
@@ -57,6 +59,8 @@ python3 -m uvicorn dashboard.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 `rebuild.sh` is **incremental** (7 steps): stop a running `uvicorn dashboard.main:app` → check Python deps → check static assets exist → (prompt once for the DB password, saved to a gitignored `./.env`, mode 600, unless `PGPASSWORD` or `~/.pgpass` covers it) → `build_data.py` → `gen_seed.py` (emits `INSERT … ON CONFLICT DO NOTHING`) → `verify_seed.py` (exits on failure unless `FORCE=1`) → `db/00_schema.sql` (idempotent, no `DROP`) → `db/01_seed.sql` → `db/02_verify.sql`. Existing rows, weekly actuals, edits and UI-added roads are never touched; the flip side is that a changed workbook value does not update an already-loaded row. Details and the Kerberos/GSSAPI explanation are in `docs/02_build_and_rebuild.md`.
+
+`./03_validate.sh` afterwards (or against Neon with `DATABASE_URL=… ./03_validate.sh`) reports tables, row counts (17 / 177 / 10 at a clean seed, WARN otherwise), orphan rows, non-Monday weeks and BR-05 weight totals; road 10 = 130 is reported as a known WARN. On a self-managed Postgres where the `tata_steel` database does not exist yet, run `PGGSSENCMODE=disable psql -U postgres -d postgres -f db/create_database.sql` once first (not part of `rebuild.sh`).
 
 `run.bat` (Windows) re-runs only `scripts/build_data.py` (prints a summary) and then starts uvicorn; it does not touch the database.
 
@@ -117,7 +121,7 @@ The Roads tab's "Add Road" form calls `POST /api/db/roads` (`create_road`, body 
 - `OPEN-01…OPEN-06` in `docs/01_business_rules.md` (weekly entry unit, planned spread, CPM dependency type, vendor/LM performance measure, bottleneck definition, week definition). The code implements working defaults for each (per-unit entry, straight-line planning, sequence-chain CPM, "all measures" performance, three bottleneck reasons, Mon–Sun weeks), but the doc still lists them as open.
 - Road 10 double-`Road`-major weighting (above).
 - Known source-data issues for Phase 1 (roads 3, 4, 7, 17 dates) — listed in `docs/01_business_rules.md` §3.
-- Deployment on Vercel/Render + Neon via `DATABASE_URL` is described (`docs/DEPLOY_VERCEL.md`) but unexercised.
+- Deployment on Vercel (`docs/DEPLOY_VERCEL.md`) and Render (`docs/DEPLOY_RENDER.md`) with Neon via `DATABASE_URL` is described but unexercised. `render_build.sh` gates per table, so a changed column/CHECK/seed row is not applied to an already-created Neon database. `docs/DEPLOY_RENDER.md` says the Neon password was exposed in logs earlier and must be rotated before deploying.
 - No automated tests, linter, or CI.
 - Unmapped activity names (`config.KNOWN_UNMAPPED`: Dismantling, Subgrade Preparation, Profile correction, Levelling & Dressing, PCC, …) need a ruling on sequence position and weight.
 - Housekeeping candidates: `clipboard_image_*.jpg`, `_write_test.md`, `_diag_gsb.py` in the repo root; `.gitignore` ignores `roadworks.db` and `.env`.

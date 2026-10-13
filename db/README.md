@@ -4,6 +4,7 @@ SQL for the PostgreSQL `tata_road` schema. Run in order by `../rebuild.sh`; see 
 
 | File | Role |
 |---|---|
+| `create_database.sql` | One-time bootstrap: creates the `tata_steel` **database** itself (the numbered files all run *inside* it and assume it exists). Idempotent + never drops — guarded by a `pg_database` existence check + `\gexec`. **Not run by `rebuild.sh`** and runs against the `postgres` maintenance DB, not `tata_steel`: `PGGSSENCMODE=disable psql -U postgres -d postgres -f db/create_database.sql`. Only needed on a local/self-managed server; Neon/Render already have the DB |
 | `00_schema.sql` | Idempotent DDL (`CREATE SCHEMA/TABLE/INDEX IF NOT EXISTS`, no `DROP`, no `ALTER`) for `road`, `activity`, `weekly_entry`, `data_issue`, `edit_log`, `manual_issue`. A new column will not reach an existing DB |
 | `01_seed.sql` | **Generated** by `scripts/gen_seed.py` from `Source/*.xlsx` as `INSERT … ON CONFLICT DO NOTHING` (adds only new roads/activities/issues); do not hand-edit |
 | `02_verify.sql` | Read-only post-load checks (expects 17 roads / 177 activities / 10 issues for Phase 1) |
