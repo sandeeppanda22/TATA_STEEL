@@ -33,8 +33,11 @@ services:
       # Use the Neon POOLED endpoint host (…-pooler…) + ?sslmode=require.
       - key: DATABASE_URL
         sync: false
-      # Safety lock: while "no" the build NEVER touches the database (no schema,
-      # no seed). Set to "yes" only to bootstrap a brand-new empty DB, deploy
-      # once, then set it back to "no".
+      # Safety lock for the DB step of render_build.sh: while this is unset or
+      # anything but "yes" the build NEVER touches the database. `sync: false`
+      # means Render does NOT overwrite the value you set in the dashboard on
+      # each Blueprint sync (a fixed `value:` here would silently reset it to
+      # "no" on every deploy). Unset = locked. To bootstrap/upgrade a DB: set
+      # it to "yes" in Environment, deploy once, then set it back to "no".
       - key: ALLOW_DB_BOOTSTRAP
-        value: "no"
+        sync: false

@@ -51,8 +51,12 @@ fi
 # schema or load seed rows. To bootstrap a NEW empty DB deliberately: set
 # ALLOW_DB_BOOTSTRAP=yes, deploy once, then set it back to "no".
 # ----------------------------------------------------------------------------
-if [ "${ALLOW_DB_BOOTSTRAP:-no}" != "yes" ]; then
-  echo "=== [2/2] ALLOW_DB_BOOTSTRAP != yes — DB bootstrap LOCKED, database not touched ==="
+# Normalise what the dashboard handed us (case, stray spaces/quotes) but accept
+# nothing other than the word "yes".
+RAW_LOCK="${ALLOW_DB_BOOTSTRAP-<unset>}"
+LOCK_VALUE="$(printf '%s' "${ALLOW_DB_BOOTSTRAP:-no}" | tr '[:upper:]' '[:lower:]' | tr -d " \t\r\n\"'")"
+if [ "$LOCK_VALUE" != "yes" ]; then
+  echo "=== [2/2] ALLOW_DB_BOOTSTRAP != yes (build received: '${RAW_LOCK}') — DB bootstrap LOCKED, database not touched ==="
   echo "=== build complete (deps only) ==="
   exit 0
 fi

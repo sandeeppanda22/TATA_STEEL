@@ -30,7 +30,7 @@ The repo already contains everything Render needs:
 | Key | Value | Notes |
 |---|---|---|
 | `DATABASE_URL` | the rotated Neon **pooled** URL from Step 1 | Secret. Required. |
-| `ALLOW_DB_BOOTSTRAP` | `no` | The safety lock. Keep `no` for all normal deploys. Only set `yes` to seed a brand-new empty DB (Step 2). `render.yaml` sets it to `no`; if the service was created before this was added, add it by hand under Environment. |
+| `ALLOW_DB_BOOTSTRAP` | `no` | The safety lock. Keep `no` for all normal deploys. Only set `yes` to seed a brand-new empty DB (Step 2). In `render.yaml` it is `sync: false`, so Render never overwrites what you set in the dashboard (a fixed value there would silently reset it on each Blueprint sync). Unset = locked. Add/edit it by hand under Environment. The build log prints the value it received, e.g. `build received: 'yes'`; case and stray spaces/quotes are tolerated, anything but the word yes stays locked. |
 | `PYTHON_VERSION` | `3.12.7` | Set by `render.yaml`. |
 
 `PORT` is injected by Render — do not add it.
@@ -142,7 +142,7 @@ re-seeding with `rebuild.sh`).
 4. Render reads `render.yaml` and shows the `tata-steel-dashboard` web service.
 5. It will prompt for the one secret marked `sync: false` → paste the rotated
    `DATABASE_URL` from Step 1 into **DATABASE_URL**. `ALLOW_DB_BOOTSTRAP` comes
-   pre-filled as `no` from `render.yaml` — leave it unless seeding an empty DB.
+   is not forced by `render.yaml` (`sync: false`); leave it unset or `no` unless seeding/upgrading a DB.
 6. Click **Apply**. Render installs deps, then starts uvicorn.
 
 First build takes a few minutes. When it goes **Live**, open the service URL
