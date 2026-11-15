@@ -2568,7 +2568,7 @@ async function loadTargetData() {
       const rows = fbStatus('tgt', tg.rows, r => r.backlog_pct > 0);
       shown += rows.length; total += tg.rows.length;
       wrap.innerHTML = `
-        <p class="hint">Window: ${fmtDate(tg.from)} to ${fmtDate(tg.to)}</p>
+        <p class="hint"><b>Window: ${fmtDate(tg.from)} to ${fmtDate(tg.to)}</b></p>
         ${targetTable(rows, group)}`;
       TARGET_VIEW[group] = { tg, rows };
       wireSelectableRows(wrap);
