@@ -328,7 +328,8 @@ def performance_months():
 
 @router.get("/performance/backlog")
 def performance_backlog(group: str = "vendor", month: str | None = None,
-                        line_manager: str | None = None, vendor: str | None = None):
+                        line_manager: str | None = None, vendor: str | None = None,
+                        detail: bool = False):
     """Backlog per vendor / line manager as at the end of `month` (YYYY-MM)."""
     if month is not None:
         try:
@@ -336,7 +337,7 @@ def performance_backlog(group: str = "vendor", month: str | None = None,
         except ValueError:
             raise HTTPException(422, "month must be YYYY-MM")
     try:
-        return calc.group_backlog(_group_field(group), month, line_manager, vendor)
+        return calc.group_backlog(_group_field(group), month, line_manager, vendor, detail)
     except ValueError as e:
         raise HTTPException(422, str(e))
 

@@ -473,7 +473,7 @@ def group_plan(group_field, as_of, horizon_days=30, line_manager=None, vendor=No
     return sorted(out, key=lambda x: -x["backlog_pct"])
 
 
-def group_backlog(group_field, month=None, line_manager=None, vendor=None):
+def group_backlog(group_field, month=None, line_manager=None, vendor=None, detail=False):
     """Backlog as at the END of `month` (YYYY-MM, default current month). For
     the current month the "end" is today - days that haven't happened can't
     have produced a backlog. Future months are rejected."""
@@ -483,7 +483,7 @@ def group_backlog(group_field, month=None, line_manager=None, vendor=None):
         raise ValueError("backlog is only available up to the current month")
     as_of = min(_month_end(y, m), today)
     return {"month": f"{y:04d}-{m:02d}", "as_of": as_of.isoformat(),
-            "rows": group_plan(group_field, as_of, 30, line_manager, vendor)}
+            "rows": group_plan(group_field, as_of, 30, line_manager, vendor, detail=detail)}
 
 
 def group_target(group_field, date_from=None, date_to=None, line_manager=None, vendor=None):

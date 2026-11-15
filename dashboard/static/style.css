@@ -713,3 +713,21 @@ table.weekly-table { margin-bottom: 10px; }
 .btn-range { font: inherit; font-size: 13px; padding: 5px 12px; border: 1px solid var(--navy); background: #fff;
   color: var(--navy); border-radius: 4px; cursor: pointer; font-weight: 600; }
 .btn-range:hover, .btn-range.active { background: var(--navy); color: #fff; }
+
+/* Print a single group (Targets / Backlog): only #printSheet is printed. */
+#printSheet { display: none; }
+.print-title { margin: 0 0 4px; color: var(--navy); }
+.print-meta { margin: 0 0 12px; font-size: 12px; color: var(--steel); }
+.print-sub { margin: 16px 0 8px; color: var(--navy); font-size: 14px; }
+@media print {
+  body.printing-single > *:not(#printSheet) { display: none !important; }
+  body.printing-single #printSheet { display: block !important; padding: 0; }
+  #printSheet table.data-table th, #printSheet table.data-table td { white-space: normal; }
+  #printSheet .detail-box { page-break-inside: avoid; margin-bottom: 10px; }
+}
+
+/* Same banner as the full-page print header (white, navy text, navy rule). */
+.print-banner { display: flex; align-items: center; gap: 12px; padding: 0 0 12px; margin-bottom: 14px;
+  color: var(--navy); border-bottom: 2px solid var(--navy); }
+.print-banner .brand-mark { color: var(--navy); margin-right: 12px; }
+.print-banner .brand-sub { color: var(--steel); }

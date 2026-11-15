@@ -2158,16 +2158,122 @@ function performanceTable(rows) {
     </table>`;
 }
 
-function backlogTable(rows) {
+/* =====================================================================
+   PRINT ONE GROUP - a clean sheet for a single vendor / line manager (Targets
+   and Backlog). The sheet is a temporary #printSheet; while body has the
+   .printing-single class the print CSS hides everything else, so the normal
+   full-page print is unchanged.
+   ===================================================================== */
+function printSheet(title, html) {
+  const old = document.getElementById('printSheet');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'printSheet';
+  el.innerHTML = `
+    <div class="print-banner">
+      <span class="brand-mark">TATA STEEL</span>
+      <span class="brand-sub">Road Infrastructure Programme &mdash; Phase 1</span>
+    </div>
+    <h2 class="print-title">${esc(title)}</h2>
+    <p class="print-meta">Printed ${fmtDate(todayISO())}</p>
+    ${html}`;
+  document.body.appendChild(el);
+  document.body.classList.add('printing-single');
+  const prevTitle = document.title;
+  document.title = title.replace(/[\\/:*?"<>|]+/g, '-');   // becomes the default PDF file name
+  const cleanup = () => {
+    document.body.classList.remove('printing-single');
+    document.title = prevTitle;
+    el.remove();
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  window.print();
+}
+
+const GROUP_LABEL = { vendor: 'Vendor', line_manager: 'Line Manager' };
+let TARGET_VIEW = {};     // group type -> { tg, rows } as currently shown on the Targets tab
+let BACKLOG_VIEW = {};    // group type -> { bl, rows } as currently shown on the Performance tab
+
+function printTargetGroup(groupKey, idx) {
+  const v = TARGET_VIEW[groupKey];
+  const r = v && v.rows[idx];
+  if (!r) return;
+  printSheet(`Target - ${GROUP_LABEL[groupKey]} ${r.group} - ${fmtDate(v.tg.from)} to ${fmtDate(v.tg.to)}`, `
+    <table class="data-table">
+      <thead><tr><th>${GROUP_LABEL[groupKey]}</th><th>Roads</th><th>Actual % Now</th><th>Backlog %</th><th>Next Planned %</th><th>Target %</th><th>Target Cumulative %</th>
+        <th>Backlog Qty</th><th>Next Planned Qty</th><th>Target Qty</th></tr></thead>
+      <tbody><tr><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td><td>${r.actual_pct}%</td><td>${r.backlog_pct}%</td>
+        <td>${r.next_planned_pct}%</td><td><b>${r.target_pct}%</b></td><td>${r.target_cumulative_pct}%</td>
+        <td>${qtyByUnit(r.quantity_by_unit, 'backlog_qty')}</td><td>${qtyByUnit(r.quantity_by_unit, 'next_planned_qty')}</td>
+        <td><b>${qtyByUnit(r.quantity_by_unit, 'target_qty')}</b></td></tr></tbody>
+    </table>
+    <h3 class="print-sub">Road-wise details</h3>
+    ${(r.road_rows || []).map(targetRoadDetail).join('') || '<p>No roads in this group.</p>'}`);
+}
+
+// Roads that actually carry a backlog (activities with backlog_qty > 0).
+function backlogRoadsOnly(roadRows) {
+  return (roadRows || []).filter(r => (r.activities || []).some(a => a.backlog_qty > 0) || r.backlog_pct > 0);
+}
+
+function backlogRoadDetail(r) {
+  const acts = (r.activities || []).filter(a => a.backlog_qty > 0);
+  return `
+    <div class="detail-box">
+      <p class="hint" style="margin:0 0 6px;"><b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash;
+        actual ${r.actual_pct}%, planned ${r.planned_pct}%, backlog <b>${r.backlog_pct}%</b></p>
+      ${acts.length ? `
+      <table class="data-table sub">
+        <thead><tr><th>Activity</th><th>Unit</th><th>Planned Qty</th><th>Actual Qty</th><th>Backlog Qty</th></tr></thead>
+        <tbody>${acts.map(a => `<tr><td class="wrap">${esc(a.activity)}</td><td>${esc(a.unit) || '-'}</td>
+          <td>${fmt(a.planned_qty)}</td><td>${fmt(a.actual_qty)}</td><td><b>${fmt(a.backlog_qty)}</b></td></tr>`).join('')}</tbody>
+      </table>` : '<p class="hint" style="margin:0;">No backlog on this road.</p>'}
+    </div>`;
+}
+
+function printBacklogGroup(groupKey, idx) {
+  const v = BACKLOG_VIEW[groupKey];
+  const r = v && v.rows[idx];
+  if (!r) return;
+  const bl = v.bl;
+  const roads = backlogRoadsOnly(r.road_rows);
+  printSheet(`Backlog - ${GROUP_LABEL[groupKey]} ${r.group} - as at ${fmtDate(bl.as_of)}`, `
+    <p class="print-meta">Backlog as at ${fmtDate(bl.as_of)} (${esc(monthLabel(bl.month))}): scheduled work not yet done.</p>
+    <table class="data-table">
+      <thead><tr><th>${GROUP_LABEL[groupKey]}</th><th>Roads</th><th>Planned %</th><th>Actual %</th><th>Backlog %</th><th>Backlog Qty</th><th>Activities Behind</th></tr></thead>
+      <tbody><tr><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td><td>${r.planned_pct}%</td><td>${r.actual_pct}%</td>
+        <td><b>${r.backlog_pct}%</b></td><td>${qtyByUnit(r.quantity_by_unit, 'backlog_qty')}</td><td>${fmt(r.activities_behind)}</td></tr></tbody>
+    </table>
+    <h3 class="print-sub">Road-wise backlog</h3>
+    ${roads.map(backlogRoadDetail).join('') || '<p>No backlog on any road in this group.</p>'}`);
+}
+
+function wirePrintButtons(wrap) {
+  wrap.querySelectorAll('[data-print-target]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();          // don't also toggle the row
+    printTargetGroup(b.dataset.printGroup, Number(b.dataset.printTarget));
+  }));
+  wrap.querySelectorAll('[data-print-backlog]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    printBacklogGroup(b.dataset.printGroup, Number(b.dataset.printBacklog));
+  }));
+}
+
+function backlogTable(rows, groupKey) {
   if (!rows.length) return '<p class="hint">No data.</p>';
   return `
-    <table class="data-table">
-      <thead><tr><th>Group</th><th>Roads</th><th>Planned %</th><th>Actual %</th><th>Backlog %</th><th>Activities Behind</th></tr></thead>
-      <tbody>${rows.map(r => `
-        <tr><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
+    <table class="data-table sel-table">
+      <thead><tr><th>Group</th><th>Roads</th><th>Planned %</th><th>Actual %</th><th>Backlog %</th><th>Activities Behind</th><th class="no-print"></th></tr></thead>
+      <tbody>${rows.map((r, i) => `
+        <tr class="sel-row" data-sel="${i}" tabindex="0" aria-expanded="false" title="Click to see road-wise backlog"><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
         <td>${r.planned_pct}%</td><td>${r.actual_pct}%</td>
         <td>${r.backlog_pct > 0 ? `<span class="pill pill-bad">${r.backlog_pct}%</span>` : '<span class="pill pill-ok">0%</span>'}</td>
-        <td>${fmt(r.activities_behind)}</td></tr>`).join('')}</tbody>
+        <td>${fmt(r.activities_behind)}</td>
+        <td class="no-print"><button type="button" class="btn-small btn-edit" data-print-backlog="${i}" data-print-group="${groupKey}">Print</button></td></tr>
+        <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="7">
+          ${backlogRoadsOnly(r.road_rows).map(backlogRoadDetail).join('') || '<p class="hint">No backlog on any road in this group.</p>'}
+        </td></tr>`).join('')}</tbody>
     </table>`;
 }
 
@@ -2194,20 +2300,21 @@ function targetRoadDetail(r) {
     </div>`;
 }
 
-function targetTable(rows) {
+function targetTable(rows, groupKey) {
   if (!rows.length) return '<p class="hint">No data.</p>';
   return `
     <table class="data-table sel-table">
       <thead><tr><th>Group</th><th>Roads</th><th>Actual % Now</th><th>Backlog %</th><th>Next Planned %</th><th>Target %</th><th>Target Cumulative %</th>
-        <th>Backlog Qty</th><th>Next Planned Qty</th><th>Target Qty</th></tr></thead>
+        <th>Backlog Qty</th><th>Next Planned Qty</th><th>Target Qty</th><th class="no-print"></th></tr></thead>
       <tbody>${rows.map((r, i) => `
         <tr class="sel-row" data-sel="${i}" tabindex="0" aria-expanded="false" title="Click to see road-wise details"><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
         <td>${r.actual_pct}%</td><td>${r.backlog_pct}%</td><td>${r.next_planned_pct}%</td>
         <td><b>${r.target_pct}%</b></td><td>${r.target_cumulative_pct}%</td>
         <td>${qtyByUnit(r.quantity_by_unit, 'backlog_qty')}</td>
         <td>${qtyByUnit(r.quantity_by_unit, 'next_planned_qty')}</td>
-        <td><b>${qtyByUnit(r.quantity_by_unit, 'target_qty')}</b></td></tr>
-        <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="10">
+        <td><b>${qtyByUnit(r.quantity_by_unit, 'target_qty')}</b></td>
+        <td class="no-print"><button type="button" class="btn-small btn-edit" data-print-target="${i}" data-print-group="${groupKey}">Print</button></td></tr>
+        <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="11">
           ${(r.road_rows || []).map(targetRoadDetail).join('') || '<p class="hint">No roads in this group.</p>'}
         </td></tr>`).join('')}</tbody>
     </table>`;
@@ -2316,11 +2423,15 @@ async function loadBacklogTables() {
     const wrap = document.getElementById(wrapId);
     wrap.innerHTML = 'Loading...';
     try {
-      const bl = await dbGet('/api/db/performance/backlog?' + fbQuery('perf', { group, month: sel.value }));
+      const bl = await dbGet('/api/db/performance/backlog?' + fbQuery('perf', { group, month: sel.value, detail: 'true' }));
       if (seq !== BACKLOG_SEQ) return;
+      const rowsShown = fbStatus('perf', bl.rows, r => r.backlog_pct > 0);
+      BACKLOG_VIEW[group] = { bl, rows: rowsShown };
       wrap.innerHTML = `
         <h3 class="hint" style="margin-top:16px;">${title} backlog - as at ${fmtDate(bl.as_of)} (${esc(monthLabel(bl.month))})</h3>
-        ${backlogTable(fbStatus('perf', bl.rows, r => r.backlog_pct > 0))}`;
+        ${backlogTable(rowsShown, group)}`;
+      wireSelectableRows(wrap);
+      wirePrintButtons(wrap);
     } catch (err) {
       if (seq === BACKLOG_SEQ) wrap.innerHTML = `<p class="hint">Could not load ${title.toLowerCase()} backlog: ${esc(err.message)}</p>`;
     }
@@ -2458,8 +2569,10 @@ async function loadTargetData() {
       shown += rows.length; total += tg.rows.length;
       wrap.innerHTML = `
         <p class="hint">Window: ${fmtDate(tg.from)} to ${fmtDate(tg.to)}</p>
-        ${targetTable(rows)}`;
+        ${targetTable(rows, group)}`;
+      TARGET_VIEW[group] = { tg, rows };
       wireSelectableRows(wrap);
+      wirePrintButtons(wrap);
     } catch (err) {
       wrap.innerHTML = `<p class="hint">Could not load ${title.toLowerCase()} targets: ${esc(err.message)}</p>`;
     }
