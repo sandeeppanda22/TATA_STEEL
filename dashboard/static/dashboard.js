@@ -83,6 +83,7 @@ async function dbSend(method, path, body) {
     err.body = out;
     throw err;
   }
+  if (window.LIVE_FEED) window.LIVE_FEED.noteLocalWrite();   // our own save: don't banner its echo
   return out;
 }
 
@@ -401,6 +402,7 @@ function populateChartFilters() {
     yearSel.innerHTML = '<option value="">All</option>' +
       years.map(y => `<option value="${y}">FY ${fyLabel(y)}</option>`).join('');
     yearSel.value = years.map(String).includes(f.year) ? f.year : '';
+    autoSelectSingle(yearSel);
     f.year = yearSel.value;
   }
 
@@ -410,6 +412,7 @@ function populateChartFilters() {
     quarterSel.innerHTML = '<option value="">All</option>' +
       qs.map(q => `<option value="${q}">${CHART_FQ_LABELS[q]}</option>`).join('');
     quarterSel.value = qs.map(String).includes(f.quarter) ? f.quarter : '';
+    autoSelectSingle(quarterSel);
     f.quarter = quarterSel.value;
   }
 
@@ -419,6 +422,7 @@ function populateChartFilters() {
     monthSel.innerHTML = '<option value="">All</option>' +
       months.map(m => `<option value="${m}">${CHART_MONTH_NAMES[m - 1]}</option>`).join('');
     monthSel.value = months.map(String).includes(f.month) ? f.month : '';
+    autoSelectSingle(monthSel);
     f.month = monthSel.value;
   }
 
@@ -428,6 +432,7 @@ function populateChartFilters() {
     weekSel.innerHTML = '<option value="">All</option>' +
       opts.map(w => `<option value="${w}">${weekLabel(w)}</option>`).join('');
     weekSel.value = opts.includes(f.week) ? f.week : '';
+    autoSelectSingle(weekSel);
     f.week = weekSel.value;
   }
 
@@ -457,6 +462,9 @@ function populateChartFilters() {
       .sort((a, b) => a.localeCompare(b));
     lmSel.innerHTML = '<option value="">All</option>' + vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
     lmSel.value = vals.includes(keep) ? keep : '';
+    // only when it's the programme's sole line manager (a date-narrowed list must stay a choice,
+    // because picking an LM here also re-scopes the chart fetch)
+    if (new Set((LIVE_ROADS || []).map(r => r.line_manager).filter(Boolean)).size === 1) autoSelectSingle(lmSel);
   }
 }
 
@@ -583,6 +591,7 @@ const TAB_LOADERS = {
   charts: renderChartsTab,
   'critical-path': renderCriticalPathTab,
   performance: renderPerformanceTab,
+  targets: renderTargetsTab,
   bottlenecks: renderBottlenecksTab,
   milestones: renderMilestonesTab,
 };
@@ -592,6 +601,7 @@ function activateTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.tabPanel === name));
   try { localStorage.setItem(ACTIVE_TAB_KEY, name); } catch (e) { /* storage unavailable */ }
   const loader = TAB_LOADERS[name];
+  if (window.LIVE_FEED) window.LIVE_FEED.onTabActivated(name, !!loader);
   if (loader && !TAB_INFLIGHT[name]) {
     TAB_INFLIGHT[name] = true;
     Promise.resolve()
@@ -650,6 +660,52 @@ function initSidenav() {
 
 let LIVE_ROADS = [];
 let EXPANDED_ROAD = null;
+
+/* =====================================================================
+   In-app notifications - replaces the browser's native alert()/confirm().
+   uiToast(msg, kind)  kind: 'ok' | 'error' | 'info'   (auto-dismisses)
+   uiConfirm(msg, {okLabel, danger})  -> Promise<boolean>  (styled dialog)
+   ===================================================================== */
+function uiToast(msg, kind) {
+  let host = document.getElementById('uiToastHost');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'uiToastHost';
+    host.className = 'ui-toast-host no-print';
+    host.setAttribute('aria-live', 'polite');
+    document.body.appendChild(host);
+  }
+  const t = document.createElement('div');
+  t.className = 'ui-toast ui-toast-' + (kind || 'info');
+  t.textContent = msg;
+  const close = () => { t.classList.add('leaving'); setTimeout(() => t.remove(), 200); };
+  t.addEventListener('click', close);
+  host.appendChild(t);
+  setTimeout(close, kind === 'error' ? 8000 : 5000);
+}
+
+function uiConfirm(message, opts) {
+  opts = opts || {};
+  return new Promise(resolve => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'ui-dialog no-print';
+    dlg.innerHTML = `
+      <div class="ui-dialog-body"></div>
+      <div class="ui-dialog-foot">
+        <button type="button" class="btn-small btn-cancel" data-no>Cancel</button>
+        <button type="button" class="btn-small ${opts.danger ? 'btn-danger' : 'btn-save'}" data-yes></button>
+      </div>`;
+    dlg.querySelector('.ui-dialog-body').textContent = message;
+    dlg.querySelector('[data-yes]').textContent = opts.okLabel || 'OK';
+    const done = v => { dlg.close(); dlg.remove(); resolve(v); };
+    dlg.querySelector('[data-yes]').addEventListener('click', () => done(true));
+    dlg.querySelector('[data-no]').addEventListener('click', () => done(false));
+    dlg.addEventListener('cancel', e => { e.preventDefault(); done(false); });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    dlg.querySelector('[data-no]').focus();
+  });
+}
 
 function setLiveStatus(msg, isError, opts) {
   opts = opts || {};
@@ -805,9 +861,9 @@ async function submitEdit(kind, id, fields, formEl, confirmOverride) {
     return true;
   } catch (err) {
     if (err.status === 409 && !confirmOverride) {
-      const ok = window.confirm(
+      const ok = await uiConfirm(
         'This field comes from the source sheet. Saving will permanently log a ' +
-        'source-override on this edit.\n\n' + err.message + '\n\nSave anyway?');
+        'source-override on this edit.\n\n' + err.message + '\n\nSave anyway?', { okLabel: 'Save anyway' });
       if (ok) return submitEdit(kind, id, fields, formEl, true);
       setLiveStatus('Edit cancelled (source-override declined).', true);
       return false;
@@ -1029,7 +1085,7 @@ async function renderWeeklyPanel(activityId, wrapEl) {
       </div>
       <p class="hint wk-weeknote">Recorded against week <b>${weekLabel(todayISO())}</b>. Each entry <b>adds to</b> the running total - it does not replace a week. Pick any day in a week.</p>`;
     wrapEl.querySelectorAll('[data-del-entry]').forEach(btn => btn.addEventListener('click', async () => {
-      if (!window.confirm('Delete this entry?')) return;
+      if (!(await uiConfirm('Delete this entry?', { okLabel: 'Delete', danger: true }))) return;
       try {
         await dbSend('DELETE', `/api/db/activities/${btn.dataset.act}/weekly/${btn.dataset.delEntry}`);
         setLiveStatus('Entry deleted.', false);
@@ -1255,6 +1311,127 @@ function renderRoadActivitiesEditor(road, wrapEl) {
   }));
 }
 
+// "Issue" panel: log a hindrance window (From/To) on this road. Saving shifts
+// the road's unfinished activities later by the window length (server rule in
+// create_road_issue). Each logged issue can be edited (dates re-applied) or
+// deleted (its shift is reversed) from the list below the form.
+function issueResultMessage(out, verb) {
+  const n = out.moved, d = out.shift_days;
+  let msg = `${verb}: ${n} activit${n === 1 ? 'y' : 'ies'} shifted by ${d} day${d === 1 ? '' : 's'}`;
+  const why = [];
+  if (out.completed) why.push(`${out.completed} already completed`);
+  if (out.ended_before) why.push(`${out.ended_before} ended before the From date`);
+  if (out.no_end_date) why.push(`${out.no_end_date} without an end date`);
+  if (why.length) msg += ` (not shifted: ${why.join(', ')})`;
+  return msg + '.';
+}
+
+async function renderRoadIssuePanel(road, wrapEl) {
+  const rn = road.road_no;
+  wrapEl.innerHTML = `
+    <div class="detail-box">
+      <p class="hint">Log a site issue with the dates it blocks work. Every unfinished activity on this road moves later by the length of the window, so nothing is planned inside it. Finished activities and ones that ended before the From date are left alone.</p>
+      <div class="form-row no-print" style="gap:10px;align-items:center;">
+        <label>From <input type="date" class="inline-input" id="issueFrom-${rn}"></label>
+        <label>To <input type="date" class="inline-input" id="issueTo-${rn}"></label>
+        <input type="text" class="inline-input" id="issueReason-${rn}" placeholder="Issue / reason" style="min-width:240px;">
+        <button type="button" class="btn-small btn-save" id="issueSave-${rn}">Add Issue</button>
+        <span class="hint" id="issueHint-${rn}"></span>
+      </div>
+      <div id="issueList-${rn}"><p class="hint">Loading issues...</p></div>
+    </div>`;
+  const q = sel => wrapEl.querySelector(sel);
+  const from = q('#issueFrom-' + rn), to = q('#issueTo-' + rn), hint = q('#issueHint-' + rn);
+  const daysBetween = (f, t) => (f && t && t >= f) ? Math.round((Date.parse(t) - Date.parse(f)) / 86400000) + 1 : null;
+  const plural = d => `${d} day${d === 1 ? '' : 's'}`;
+  const showDays = () => { const d = daysBetween(from.value, to.value); hint.textContent = d ? `Activities will shift ${plural(d)}.` : ''; };
+  from.addEventListener('change', showDays);
+  to.addEventListener('change', showDays);
+
+  // After any change the road table is rebuilt (panels close), so reopen this one.
+  const afterChange = async (msg, isError) => {
+    EXPANDED_ROAD = rn;
+    await refreshLiveRoads();
+    setLiveStatus(msg, isError, { roadNo: rn });
+    uiToast(msg, isError ? 'error' : 'ok');
+    const btn = document.querySelector(`[data-road-issue="${rn}"]`);
+    if (btn) btn.click();
+  };
+
+  const loadList = async () => {
+    const box = q('#issueList-' + rn);
+    try {
+      const rows = await dbGet(`/api/db/roads/${rn}/issues`);
+      box.innerHTML = rows.length ? `
+        <table class="data-table sub">
+          <thead><tr><th>From</th><th>To</th><th>Days shifted</th>
+            <th title="Number of activities whose planned dates were pushed later by this issue">Activities moved</th>
+            <th>Issue</th><th>Logged</th><th></th></tr></thead>
+          <tbody>${rows.map(r => `
+            <tr data-issue-row="${r.issue_id}">
+              <td>${fmtDate(r.from_date)}</td><td>${fmtDate(r.to_date)}</td>
+              <td>${r.shift_days}</td><td>${r.activities_shifted}</td>
+              <td class="wrap issue-text">${esc(r.reason) || '-'}</td><td>${fmtDateTime(r.created_at)}</td>
+              <td class="no-print" style="white-space:nowrap;">${r.to_date < todayISO() ? '' : `
+                <button type="button" class="btn-small btn-edit" data-issue-edit="${r.issue_id}">Edit</button>
+                <button type="button" class="btn-small btn-danger" data-issue-del="${r.issue_id}">Delete</button>`}
+              </td>
+            </tr>`).join('')}</tbody>
+        </table>` : '<p class="hint">No issues logged for this road.</p>';
+
+      box.querySelectorAll('[data-issue-del]').forEach(btn => btn.addEventListener('click', async () => {
+        const row = rows.find(r => String(r.issue_id) === btn.dataset.issueDel);
+        if (!(await uiConfirm(`Delete this issue? The ${plural(row.shift_days)} it added will be taken back out of the road's activity dates.`,
+                              { okLabel: 'Delete', danger: true }))) return;
+        try {
+          await dbSend('DELETE', `/api/db/roads/${rn}/issues/${row.issue_id}`);
+          await afterChange(`Issue deleted; ${plural(row.shift_days)} taken back out of the schedule.`, false);
+        } catch (err) { uiToast('Could not delete issue: ' + err.message, 'error'); }
+      }));
+
+      box.querySelectorAll('[data-issue-edit]').forEach(btn => btn.addEventListener('click', () => {
+        const row = rows.find(r => String(r.issue_id) === btn.dataset.issueEdit);
+        const tr = box.querySelector(`[data-issue-row="${row.issue_id}"]`);
+        tr.innerHTML = `
+          <td><input type="date" class="inline-input" data-e-from value="${row.from_date}"></td>
+          <td><input type="date" class="inline-input" data-e-to value="${row.to_date}"></td>
+          <td colspan="3"><input type="text" class="inline-input" data-e-reason value="${esc(row.reason || '')}" style="width:100%;" placeholder="Issue / reason"></td>
+          <td colspan="2" style="white-space:nowrap;">
+            <button type="button" class="btn-small btn-save" data-e-save>Save</button>
+            <button type="button" class="btn-small btn-cancel" data-e-cancel>Cancel</button>
+          </td>`;
+        tr.querySelector('[data-e-cancel]').addEventListener('click', loadList);
+        tr.querySelector('[data-e-save]').addEventListener('click', async () => {
+          const f = tr.querySelector('[data-e-from]').value, t = tr.querySelector('[data-e-to]').value;
+          if (!f || !t) { uiToast('Pick both From and To dates.', 'error'); return; }
+          if (t < f) { uiToast('To must be on or after From.', 'error'); return; }
+          try {
+            const out = await dbSend('PUT', `/api/db/roads/${rn}/issues/${row.issue_id}`,
+              { from_date: f, to_date: t, reason: tr.querySelector('[data-e-reason]').value });
+            await afterChange(issueResultMessage(out, 'Issue updated'), false);
+          } catch (err) { uiToast('Could not update issue: ' + err.message, 'error'); }
+        });
+      }));
+    } catch (err) {
+      box.innerHTML = `<p class="hint">Could not load issues: ${esc(err.message)}</p>`;
+    }
+  };
+  loadList();
+
+  q('#issueSave-' + rn).addEventListener('click', async () => {
+    if (!from.value || !to.value) { uiToast('Pick both From and To dates.', 'error'); return; }
+    if (to.value < from.value) { uiToast('To must be on or after From.', 'error'); return; }
+    const d = daysBetween(from.value, to.value);
+    if (!(await uiConfirm(`Shift all unfinished activities on road ${rn} by ${plural(d)}? This changes their planned dates (logged in the Edit Log).`,
+                          { okLabel: 'Add issue' }))) return;
+    try {
+      const out = await dbSend('POST', `/api/db/roads/${rn}/issues`,
+        { from_date: from.value, to_date: to.value, reason: q('#issueReason-' + rn).value });
+      await afterChange(issueResultMessage(out, 'Issue logged'), false);
+    } catch (err) { uiToast('Could not log issue: ' + err.message, 'error'); }
+  });
+}
+
 // "View Past Data" panel: per-activity entry history, view + delete.
 function renderRoadWeeklyData(road, wrapEl) {
   const acts = road.activities || [];
@@ -1288,7 +1465,7 @@ async function renderRoadBottlenecks(road, wrapEl) {
     }
     wrapEl.innerHTML = `
       <div class="detail-box">
-        <p class="hint">An activity is flagged if it is behind planned-to-date by more than 15 points, is holding up the next activity in sequence, or has had zero recorded progress for 3+ weeks since it started.</p>
+        <p class="hint">An activity is flagged if it is behind planned-to-date by more than 15 percentage, is holding up the next activity in sequence, or has had zero recorded progress for 3+ weeks since it started.</p>
         <div class="table-scroll">
         <table class="data-table sub">
           <thead><tr><th>Activity</th><th>Actual %</th><th>Expected %</th><th>Reasons</th></tr></thead>
@@ -1350,12 +1527,14 @@ function liveRoadBlock(road) {
               <button class="btn-small btn-edit" data-road-bottlenecks="${road.road_no}">Bottlenecks</button>
               <button class="btn-small btn-edit" data-road-pyramid="${road.road_no}">Parallel Working</button>
               <button class="btn-small btn-edit" data-road-editacts="${road.road_no}">Edit Activities</button>
+              <button class="btn-small btn-edit btn-issue" data-road-issue="${road.road_no}">Issue</button>
             </div>
             <div class="road-weekly-wrap" id="road-weekly-${road.road_no}" hidden></div>
             <div class="road-weeklydata-wrap" id="road-weeklydata-${road.road_no}" hidden></div>
             <div class="road-bottlenecks-wrap" id="road-bottlenecks-${road.road_no}" hidden></div>
             <div class="road-pyramid-wrap" id="road-pyramid-${road.road_no}" hidden></div>
             <div class="road-editacts-wrap" id="road-editacts-${road.road_no}" hidden></div>
+            <div class="road-issue-wrap" id="road-issue-${road.road_no}" hidden></div>
             <div class="form-row no-print act-date-filter" data-road="${road.road_no}" style="margin:0 0 8px;gap:6px;align-items:center;">
               <label class="hint">Activity dates</label>
               <span class="hint">from</span>
@@ -1437,7 +1616,7 @@ function wireLiveRoadsEvents() {
   const closeRoadPanels = (rn, except) => {
     [['road-weekly-', 'weekly'], ['road-weeklydata-', 'weeklydata'],
      ['road-bottlenecks-', 'bottlenecks'], ['road-pyramid-', 'pyramid'],
-     ['road-editacts-', 'editacts']]
+     ['road-editacts-', 'editacts'], ['road-issue-', 'issue']]
       .forEach(([prefix, key]) => {
         if (key === except) return;
         const el = document.getElementById(prefix + rn);
@@ -1499,6 +1678,16 @@ function wireLiveRoadsEvents() {
     wrap.hidden = !willOpen;
     if (willOpen && road) renderRoadActivitiesEditor(road, wrap);
   }));
+  document.querySelectorAll('[data-road-issue]').forEach(btn => btn.addEventListener('click', async () => {
+    const rn = Number(btn.dataset.roadIssue);
+    const road = LIVE_ROADS.find(r => r.road_no === rn);
+    const wrap = document.getElementById('road-issue-' + rn);
+    if (!wrap) return;
+    closeRoadPanels(rn, 'issue');
+    const willOpen = wrap.hidden;
+    wrap.hidden = !willOpen;
+    if (willOpen && road) renderRoadIssuePanel(road, wrap);
+  }));
   document.querySelectorAll('[data-goto-bottlenecks]').forEach(btn => btn.addEventListener('click', (e) => {
     e.stopPropagation();
     activateTab('bottlenecks');
@@ -1533,6 +1722,17 @@ function filteredLiveRoads() {
     Object.entries(f).every(([field, val]) => !val || String(r[field] || '') === val));
 }
 
+// A dropdown with exactly one real choice (besides "All"/blank) selects it
+// automatically - there's nothing to decide. Returns true when it ends up
+// holding that single value. Use after (re)building a filter's options.
+function autoSelectSingle(sel) {
+  if (!sel || sel.disabled) return false;
+  const real = [...sel.options].filter(o => o.value !== '');
+  if (real.length !== 1) return false;
+  sel.value = real[0].value;
+  return true;
+}
+
 function populateRoadFilters() {
   Object.entries(ROAD_FILTER_IDS).forEach(([field, id]) => {
     const sel = document.getElementById(id);
@@ -1543,6 +1743,7 @@ function populateRoadFilters() {
     sel.innerHTML = '<option value="">All</option>' +
       vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
     if (vals.includes(keep)) sel.value = keep;
+    autoSelectSingle(sel);
   });
 }
 
@@ -1557,7 +1758,7 @@ function wireRoadFilters() {
   if (clear) clear.addEventListener('click', () => {
     Object.values(ROAD_FILTER_IDS).forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.value = '';
+      if (el) { el.value = ''; autoSelectSingle(el); }   // a lone option stays selected
     });
     renderLiveRoadsTable();
   });
@@ -1891,45 +2092,387 @@ function renderCriticalPathTab() {
    PERFORMANCE TAB - GET /api/db/performance/vendor and .../line-manager.
    Both return a list sorted by -progress_pct, same row shape.
    ===================================================================== */
+// Click (or Enter/Space) a .sel-row to show/hide its road-wise detail row.
+function wireSelectableRows(wrap) {
+  const toggle = row => {
+    const det = wrap.querySelector(`[data-sel-detail="${row.dataset.sel}"]`);
+    if (!det) return;
+    det.hidden = !det.hidden;
+    row.classList.toggle('selected', !det.hidden);
+    row.setAttribute('aria-expanded', String(!det.hidden));
+  };
+  wrap.querySelectorAll('tr.sel-row').forEach(row => {
+    row.addEventListener('click', () => toggle(row));
+    row.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(row); }
+    });
+  });
+}
+
+// Planned vs actual quantity per unit (units aren't additive, so one line each).
+function perfQty(list, key) {
+  const parts = (list || []).filter(q => q[key] > 0).map(q => `${fmt(q[key])} ${esc(q.unit)}`);
+  return parts.length ? parts.join('<br>') : '-';
+}
+
+function perfRoadDetail(r) {
+  return `
+    <div class="detail-box">
+      <p class="hint" style="margin:0 0 6px;"><b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash;
+        progress ${r.progress_pct}%, planned to date ${r.planned_pct}%</p>
+      <div class="table-scroll">
+      <table class="data-table sub">
+        <thead><tr><th>Activity</th><th>Unit</th><th>Planned Qty</th><th>Actual Qty</th><th>% Complete</th></tr></thead>
+        <tbody>${(r.activities || []).map(a => `
+          <tr><td class="wrap">${esc(a.activity)}</td><td>${esc(a.unit) || '-'}</td>
+          <td>${fmt(a.planned_qty)}</td><td>${fmt(a.actual_qty)}</td><td>${a.actual_pct}%</td></tr>`).join('')
+          || '<tr><td colspan="5">No activities.</td></tr>'}</tbody>
+      </table>
+      </div>
+    </div>`;
+}
+
 function performanceRows(rows) {
-  if (!rows.length) return '<tr><td colspan="6">No data.</td></tr>';
-  return rows.map(r => `
-    <tr>
+  if (!rows.length) return '<tr><td colspan="7">No data.</td></tr>';
+  return rows.map((r, i) => `
+    <tr class="sel-row" data-sel="${i}" tabindex="0" aria-expanded="false" title="Click to see road-wise details">
       <td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
       <td>${r.progress_pct}%</td>
-      <td>${r.avg_slippage_days == null ? '-' : r.avg_slippage_days + ' days'}</td>
+      <td>${perfQty(r.quantity_by_unit, 'planned_qty')}</td>
+      <td>${perfQty(r.quantity_by_unit, 'actual_qty')}</td>
       <td>${fmt(r.activities_behind)}</td>
       <td>${r.activities_behind > 0
         ? `<span class="pill pill-bad">Behind</span>`
         : `<span class="pill pill-ok">On / ahead</span>`}</td>
-    </tr>`).join('');
+    </tr>
+    <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="7">
+      ${(r.road_rows || []).map(perfRoadDetail).join('') || '<p class="hint">No roads in this group.</p>'}
+    </td></tr>`).join('');
 }
 
 function performanceTable(rows) {
   return `
-    <table class="data-table">
-      <thead><tr><th>Group</th><th>Roads</th><th>Progress %</th><th>Avg. Slippage</th><th>Activities Behind</th><th>Status</th></tr></thead>
+    <table class="data-table sel-table">
+      <thead><tr><th>Group</th><th>Roads</th><th>Progress %</th><th>Planned Qty</th><th>Actual Qty</th><th>Activities Behind</th><th>Status</th></tr></thead>
       <tbody>${performanceRows(rows)}</tbody>
     </table>`;
 }
 
-async function renderPerformanceTab() {
+function backlogTable(rows) {
+  if (!rows.length) return '<p class="hint">No data.</p>';
+  return `
+    <table class="data-table">
+      <thead><tr><th>Group</th><th>Roads</th><th>Planned %</th><th>Actual %</th><th>Backlog %</th><th>Activities Behind</th></tr></thead>
+      <tbody>${rows.map(r => `
+        <tr><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
+        <td>${r.planned_pct}%</td><td>${r.actual_pct}%</td>
+        <td>${r.backlog_pct > 0 ? `<span class="pill pill-bad">${r.backlog_pct}%</span>` : '<span class="pill pill-ok">0%</span>'}</td>
+        <td>${fmt(r.activities_behind)}</td></tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function qtyByUnit(list, key) {
+  const parts = (list || []).filter(q => q[key] > 0).map(q => `${fmt(q[key])} ${esc(q.unit)}`);
+  return parts.length ? parts.join('<br>') : '-';
+}
+
+function targetRoadDetail(r) {
+  return `
+    <div class="detail-box">
+      <p class="hint" style="margin:0 0 6px;"><b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash;
+        actual ${r.actual_pct}%, backlog ${r.backlog_pct}%, next planned ${r.next_planned_pct}%,
+        target <b>${r.target_pct}%</b> (cumulative ${r.target_cumulative_pct}%)</p>
+      ${(r.activities || []).length ? `<div class="table-scroll">
+      <table class="data-table sub">
+        <thead><tr><th>Activity</th><th>Unit</th><th>Planned Qty</th><th>Actual Qty</th><th>Backlog Qty</th><th>Next Planned Qty</th><th>Target Qty</th></tr></thead>
+        <tbody>${(r.activities || []).map(a => `
+          <tr><td class="wrap">${esc(a.activity)}</td><td>${esc(a.unit) || '-'}</td>
+          <td>${fmt(a.planned_qty)}</td><td>${fmt(a.actual_qty)}</td><td>${fmt(a.backlog_qty)}</td>
+          <td>${fmt(a.next_planned_qty)}</td><td><b>${fmt(a.target_qty)}</b></td></tr>`).join('')}</tbody>
+      </table>
+      </div>` : '<p class="hint" style="margin:0;">No backlog or planned work on this road in the selected period.</p>'}
+    </div>`;
+}
+
+function targetTable(rows) {
+  if (!rows.length) return '<p class="hint">No data.</p>';
+  return `
+    <table class="data-table sel-table">
+      <thead><tr><th>Group</th><th>Roads</th><th>Actual % Now</th><th>Backlog %</th><th>Next Planned %</th><th>Target %</th><th>Target Cumulative %</th>
+        <th>Backlog Qty</th><th>Next Planned Qty</th><th>Target Qty</th></tr></thead>
+      <tbody>${rows.map((r, i) => `
+        <tr class="sel-row" data-sel="${i}" tabindex="0" aria-expanded="false" title="Click to see road-wise details"><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
+        <td>${r.actual_pct}%</td><td>${r.backlog_pct}%</td><td>${r.next_planned_pct}%</td>
+        <td><b>${r.target_pct}%</b></td><td>${r.target_cumulative_pct}%</td>
+        <td>${qtyByUnit(r.quantity_by_unit, 'backlog_qty')}</td>
+        <td>${qtyByUnit(r.quantity_by_unit, 'next_planned_qty')}</td>
+        <td><b>${qtyByUnit(r.quantity_by_unit, 'target_qty')}</b></td></tr>
+        <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="10">
+          ${(r.road_rows || []).map(targetRoadDetail).join('') || '<p class="hint">No roads in this group.</p>'}
+        </td></tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function monthLabel(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+}
+
+/* Filter bars (Performance and Targets tabs share one implementation; the
+   element ids are `${prefix}FilterVendor|LM|Status|Clear|Count`). */
+function fbFilters(prefix) {
+  return {
+    vendor: document.getElementById(prefix + 'FilterVendor').value,
+    lm: document.getElementById(prefix + 'FilterLM').value,
+    status: document.getElementById(prefix + 'FilterStatus').value,
+  };
+}
+
+function fbQuery(prefix, extra) {
+  const f = fbFilters(prefix);
+  const p = new URLSearchParams(extra || {});
+  if (f.vendor) p.set('vendor', f.vendor);
+  if (f.lm) p.set('line_manager', f.lm);
+  if (prefix === 'tgt') {
+    const from = document.getElementById('tgtFilterFrom').value;
+    const to = document.getElementById('tgtFilterTo').value;
+    if (from) p.set('date_from', from);
+    if (to) p.set('date_to', to);
+  }
+  return p.toString();
+}
+
+// Status is applied client-side on whichever "behind" signal the table has.
+function fbStatus(prefix, rows, behindFn) {
+  const s = fbFilters(prefix).status;
+  return s ? rows.filter(r => behindFn(r) === (s === 'behind')) : rows;
+}
+
+function fbSetCount(prefix, shown, total) {
+  const el = document.getElementById(prefix + 'FilterCount');
+  const f = fbFilters(prefix);
+  el.textContent = (f.vendor || f.lm || f.status) ? `Showing ${shown} of ${total}` : '';
+}
+
+// Vendor and Line Manager filters narrow each other: once one is chosen, the
+// other only offers values that actually occur together with it on a road, so
+// an empty / contradictory combination can't be picked. A selection that is no
+// longer valid is dropped. (Rebuilt from LIVE_ROADS, so no extra request.)
+function refreshFilterOptions(prefix) {
+  const vSel = document.getElementById(prefix + 'FilterVendor');
+  const lSel = document.getElementById(prefix + 'FilterLM');
+  const roads = LIVE_ROADS || [];
+  const uniq = arr => [...new Set(arr.filter(Boolean))].sort();
+  const fill = (sel, values) => {
+    const keep = values.includes(sel.value) ? sel.value : '';
+    sel.innerHTML = '<option value="">All</option>' +
+      values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    sel.value = keep;
+  };
+  // two passes so a dropped selection widens the other list on the next pass
+  for (let pass = 0; pass < 3; pass++) {
+    const v = vSel.value, l = lSel.value;
+    fill(vSel, uniq(roads.filter(r => !l || r.line_manager === l).map(r => r.vendor)));
+    fill(lSel, uniq(roads.filter(r => !v || r.vendor === v).map(r => r.line_manager)));
+    autoSelectSingle(vSel);      // only one choice -> pick it (may in turn narrow the other list)
+    autoSelectSingle(lSel);
+  }
+}
+
+function initFilterBar(prefix, onChange, onClear) {
+  const bar = document.getElementById(prefix + 'FilterBar');
+  refreshFilterOptions(prefix);
+  if (bar.dataset.wired) return;
+  bar.dataset.wired = '1';
+  ['Vendor', 'LM'].forEach(k => document.getElementById(prefix + 'Filter' + k).addEventListener('change', () => {
+    refreshFilterOptions(prefix);
+    onChange();
+  }));
+  ['Status', 'From', 'To'].forEach(k => {
+    const el = document.getElementById(prefix + 'Filter' + k);
+    if (el) el.addEventListener('change', onChange);
+  });
+  document.getElementById(prefix + 'FilterClear').addEventListener('click', () => {
+    ['Vendor', 'LM', 'Status'].forEach(k => { document.getElementById(prefix + 'Filter' + k).value = ''; });
+    refreshFilterOptions(prefix);          // back to the full lists
+    if (onClear) onClear();                // tab-specific extras (month / dates)
+    onChange();
+  });
+}
+
+let BACKLOG_SEQ = 0, PERF_SEQ = 0, TARGET_SEQ = 0;   // newest request wins; late replies are dropped
+
+function resetBacklogMonth() {
+  const sel = document.getElementById('backlogMonthSelect');
+  const now = new Date();
+  const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+
+async function loadBacklogTables() {
+  const seq = ++BACKLOG_SEQ;
+  const sel = document.getElementById('backlogMonthSelect');
+  for (const [group, wrapId, title] of [['vendor', 'vendorPlanWrap', 'Vendor'], ['line_manager', 'lmPlanWrap', 'Line Manager']]) {
+    const wrap = document.getElementById(wrapId);
+    wrap.innerHTML = 'Loading...';
+    try {
+      const bl = await dbGet('/api/db/performance/backlog?' + fbQuery('perf', { group, month: sel.value }));
+      if (seq !== BACKLOG_SEQ) return;
+      wrap.innerHTML = `
+        <h3 class="hint" style="margin-top:16px;">${title} backlog - as at ${fmtDate(bl.as_of)} (${esc(monthLabel(bl.month))})</h3>
+        ${backlogTable(fbStatus('perf', bl.rows, r => r.backlog_pct > 0))}`;
+    } catch (err) {
+      if (seq === BACKLOG_SEQ) wrap.innerHTML = `<p class="hint">Could not load ${title.toLowerCase()} backlog: ${esc(err.message)}</p>`;
+    }
+  }
+}
+
+async function initBacklogMonth() {
+  const sel = document.getElementById('backlogMonthSelect');
+  if (sel.options.length) return;
+  try {
+    const months = await dbGet('/api/db/performance/months');
+    const now = new Date();
+    const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    sel.innerHTML = months.map(m => `<option value="${m}">${esc(monthLabel(m))}</option>`).join('');
+    sel.value = months.includes(cur) ? cur : months[months.length - 1];
+    sel.addEventListener('change', loadBacklogTables);
+  } catch (err) { /* tables below will surface the error */ }
+}
+
+async function loadPerformanceData() {
+  const seq = ++PERF_SEQ;
   const vendorWrap = document.getElementById('vendorPerfWrap');
   const lmWrap = document.getElementById('lmPerfWrap');
   vendorWrap.innerHTML = 'Loading...';
   lmWrap.innerHTML = 'Loading...';
+  const behind = r => r.activities_behind > 0;
+  let shown = 0, total = 0;
   try {
-    const vendors = await dbGet('/api/db/performance/vendor');
-    vendorWrap.innerHTML = performanceTable(vendors);
+    const vendors = await dbGet('/api/db/performance/vendor?' + fbQuery('perf'));
+    if (seq !== PERF_SEQ) return;
+    const rows = fbStatus('perf', vendors, behind);
+    shown += rows.length; total += vendors.length;
+    vendorWrap.innerHTML = performanceTable(rows);
+    wireSelectableRows(vendorWrap);
   } catch (err) {
     vendorWrap.innerHTML = `<p class="hint">Could not load vendor performance: ${esc(err.message)}</p>`;
   }
   try {
-    const lms = await dbGet('/api/db/performance/line-manager');
-    lmWrap.innerHTML = performanceTable(lms);
+    const lms = await dbGet('/api/db/performance/line-manager?' + fbQuery('perf'));
+    if (seq !== PERF_SEQ) return;
+    const rows = fbStatus('perf', lms, behind);
+    shown += rows.length; total += lms.length;
+    lmWrap.innerHTML = performanceTable(rows);
+    wireSelectableRows(lmWrap);
   } catch (err) {
     lmWrap.innerHTML = `<p class="hint">Could not load line manager performance: ${esc(err.message)}</p>`;
   }
+  if (seq !== PERF_SEQ) return;
+  fbSetCount('perf', shown, total);
+  loadBacklogTables();
+}
+
+async function renderPerformanceTab() {
+  initFilterBar('perf', loadPerformanceData, resetBacklogMonth);
+  await initBacklogMonth();
+  loadPerformanceData();
+}
+
+/* =====================================================================
+   TARGETS TAB - GET /api/db/performance/target?group=&vendor=&line_manager=.
+   Next-month target per vendor / line manager = backlog today + planned
+   work in the next 30 days.
+   ===================================================================== */
+// A target looks forward: neither date may be in the past.
+function setTargetDateMins() {
+  const t = todayISO();
+  document.getElementById('tgtFilterFrom').min = t;
+  document.getElementById('tgtFilterTo').min = t;
+}
+
+// Quick ranges: "N days from tomorrow" = From tomorrow, To tomorrow + N days.
+function targetRangeDates(days) {
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const from = new Date(); from.setDate(from.getDate() + 1);
+  const to = new Date(from); to.setDate(to.getDate() + days);
+  return { from: iso(from), to: iso(to) };
+}
+
+// Highlight the quick-range button whose dates are currently selected (if any).
+function syncRangeButtons() {
+  const f = document.getElementById('tgtFilterFrom').value, t = document.getElementById('tgtFilterTo').value;
+  document.querySelectorAll('[data-range-days]').forEach(b => {
+    const r = targetRangeDates(Number(b.dataset.rangeDays));
+    b.classList.toggle('active', r.from === f && r.to === t);
+  });
+}
+
+function wireRangeButtons() {
+  const bar = document.getElementById('tgtFilterBar');
+  if (bar.dataset.rangeWired) return;
+  bar.dataset.rangeWired = '1';
+  document.querySelectorAll('[data-range-days]').forEach(b => b.addEventListener('click', () => {
+    const r = targetRangeDates(Number(b.dataset.rangeDays));
+    document.getElementById('tgtFilterFrom').value = r.from;
+    document.getElementById('tgtFilterTo').value = r.to;
+    loadTargetData();
+  }));
+  ['tgtFilterFrom', 'tgtFilterTo'].forEach(id =>
+    document.getElementById(id).addEventListener('change', syncRangeButtons));
+}
+
+function setDefaultTargetDates() {
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const from = new Date();
+  const to = new Date(from.getTime() + 30 * 86400000);
+  document.getElementById('tgtFilterFrom').value = iso(from);
+  document.getElementById('tgtFilterTo').value = iso(to);
+  setTargetDateMins();
+  syncRangeButtons();
+}
+
+async function loadTargetData() {
+  const seq = ++TARGET_SEQ;
+  syncRangeButtons();
+  const fromEl = document.getElementById('tgtFilterFrom');
+  const toEl = document.getElementById('tgtFilterTo');
+  if ((fromEl.value && fromEl.value < todayISO()) || (toEl.value && toEl.value < todayISO())) {
+    for (const id of ['vendorTargetWrap', 'lmTargetWrap'])
+      document.getElementById(id).innerHTML = '<p class="hint">Targets are for today or future dates only. Pick a From and To that are not in the past.</p>';
+    return;
+  }
+  if (fromEl.value && toEl.value && toEl.value <= fromEl.value) {
+    for (const id of ['vendorTargetWrap', 'lmTargetWrap'])
+      document.getElementById(id).innerHTML = '<p class="hint">The "To" date must be after the "From" date.</p>';
+    return;
+  }
+  let shown = 0, total = 0;
+  for (const [group, wrapId, title] of [['vendor', 'vendorTargetWrap', 'Vendor'], ['line_manager', 'lmTargetWrap', 'Line Manager']]) {
+    const wrap = document.getElementById(wrapId);
+    wrap.innerHTML = 'Loading...';
+    try {
+      const tg = await dbGet('/api/db/performance/target?' + fbQuery('tgt', { group }));
+      if (seq !== TARGET_SEQ) return;
+      const rows = fbStatus('tgt', tg.rows, r => r.backlog_pct > 0);
+      shown += rows.length; total += tg.rows.length;
+      wrap.innerHTML = `
+        <p class="hint">Window: ${fmtDate(tg.from)} to ${fmtDate(tg.to)}</p>
+        ${targetTable(rows)}`;
+      wireSelectableRows(wrap);
+    } catch (err) {
+      wrap.innerHTML = `<p class="hint">Could not load ${title.toLowerCase()} targets: ${esc(err.message)}</p>`;
+    }
+  }
+  if (seq === TARGET_SEQ) fbSetCount('tgt', shown, total);
+}
+
+function renderTargetsTab() {
+  if (!document.getElementById('tgtFilterFrom').value) setDefaultTargetDates();
+  setTargetDateMins();
+  wireRangeButtons();
+  initFilterBar('tgt', loadTargetData, setDefaultTargetDates);
+  return loadTargetData();
 }
 
 /* =====================================================================
@@ -1947,10 +2490,10 @@ async function renderBottlenecksTab() {
       ? '<p>No bottlenecks detected.</p>'
       : `
       <table class="data-table">
-        <thead><tr><th>Road</th><th>Line Manager</th><th>Activity</th><th>Actual %</th><th>Expected %</th><th>Reasons</th></tr></thead>
+        <thead><tr><th>Road</th><th>Location</th><th>Line Manager</th><th>Activity</th><th>Actual %</th><th>Expected %</th><th>Reasons</th></tr></thead>
         <tbody>${rows.map(r => `
           <tr class="issue-row">
-            <td>${esc(r.road_no)}</td><td class="wrap">${esc(r.line_manager) || '-'}</td>
+            <td>${esc(r.road_no)}</td><td class="wrap">${esc(r.location) || '-'}</td><td class="wrap">${esc(r.line_manager) || '-'}</td>
             <td class="wrap">${esc(r.activity)}</td>
             <td>${r.actual_pct}%</td><td>${r.expected_pct}%</td>
             <td class="wrap">${esc((r.reasons || []).join('; '))}</td>
@@ -2014,19 +2557,19 @@ function wireManualIssueTable() {
         await dbSend('PUT', `/api/db/manual-bottlenecks/${id}`, { status, remarks });
         renderBottlenecksTab();
       } catch (err) {
-        alert('Could not save: ' + err.message);
+        uiToast('Could not save: ' + err.message, 'error');
         btn.disabled = false;
       }
     });
   });
   wrap.querySelectorAll('.manual-issue-delete').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Delete this issue record?')) return;
+      if (!(await uiConfirm('Delete this issue record?', { okLabel: 'Delete', danger: true }))) return;
       try {
         await dbSend('DELETE', `/api/db/manual-bottlenecks/${btn.dataset.issueId}`);
         renderBottlenecksTab();
       } catch (err) {
-        alert('Could not delete: ' + err.message);
+        uiToast('Could not delete: ' + err.message, 'error');
       }
     });
   });
@@ -2194,11 +2737,199 @@ function toggleImportCsvForm() {
 
 document.getElementById('importCsvToggle').addEventListener('click', toggleImportCsvForm);
 
+/* =====================================================================
+   Export Summary CSV — column picker dialog. Only the summary export is
+   wired to a dialog (history export was dropped from the UI per request);
+   the user ticks which columns they want and the download is built with
+   just those, via /api/db/export/summary?columns=...
+
+   The two scopes show different shapes of data (one row per road, overall,
+   vs one row per activity, for a single road), so each gets its OWN column
+   list - the "Single road" picker is not just the overall columns filtered
+   to one road, it is activity-level detail (mirrors
+   calc.road_activity_rows / _ROAD_COLUMNS in db_routes.py).
+   ===================================================================== */
+const EXPORT_COLUMNS_BY_SCOPE = {
+  all: [
+    { key: 'road', label: 'Road' },
+    { key: 'location', label: 'Location' },
+    { key: 'vendor', label: 'Vendor' },
+    { key: 'line_manager', label: 'Line Manager' },
+    { key: 'activities', label: 'Activities' },
+    { key: 'actual_pct', label: 'Actual %' },
+    { key: 'planned_pct', label: 'Planned %' },
+    { key: 'status', label: 'Status' },
+  ],
+  road: [
+    { key: 'activity', label: 'Activity' },
+    { key: 'major', label: 'Major' },
+    { key: 'unit', label: 'Unit' },
+    { key: 'planned_qty', label: 'Planned Qty' },
+    { key: 'actual_qty', label: 'Actual Qty' },
+    { key: 'actual_pct', label: 'Actual %' },
+    { key: 'planned_pct', label: 'Planned %' },
+    { key: 'start_date', label: 'Start Date' },
+    { key: 'end_date', label: 'End Date' },
+    { key: 'status', label: 'Status' },
+  ],
+};
+
+// Belt-and-suspenders for the ".chip:has(input:checked)" CSS highlight -
+// :has() is modern-browser-only, so mirror it with a plain class toggle too.
+function syncExportChipClass(el) {
+  el.closest('.export-col-chip, .export-scope-card')?.classList.toggle('is-checked', el.checked);
+}
+
+function renderExportColumns(scope) {
+  const list = document.getElementById('exportColumnsList');
+  list.innerHTML = EXPORT_COLUMNS_BY_SCOPE[scope].map(c => `
+    <label class="export-col-chip">
+      <input type="checkbox" class="export-col-chk" value="${c.key}" checked> ${c.label}
+    </label>`).join('');
+  list.querySelectorAll('.export-col-chk').forEach(cb => {
+    syncExportChipClass(cb);
+    cb.addEventListener('change', () => syncExportChipClass(cb));
+  });
+}
+
+function openExportSummaryDialog() {
+  const dlg = document.getElementById('exportColumnsDialog');
+  if (!dlg) return;
+
+  // Scope: overall (all roads) vs a single picked road. Default back to
+  // "overall" and the road dropdown hidden every time the dialog opens, so
+  // a previous single-road export doesn't quietly carry over.
+  document.getElementById('exportScopeAll').checked = true;
+  document.querySelectorAll('input[name="exportScope"]').forEach(syncExportChipClass);
+  const roadSelect = document.getElementById('exportRoadSelect');
+  roadSelect.innerHTML = (LIVE_ROADS || []).map(r =>
+    `<option value="${r.road_no}">R${r.road_no} ${esc(r.location)}</option>`).join('');
+  roadSelect.style.display = 'none';
+  renderExportColumns('all');
+
+  if (typeof dlg.showModal === 'function') dlg.showModal();
+  else dlg.setAttribute('open', '');
+}
+
+document.getElementById('exportSummaryToggle').addEventListener('click', openExportSummaryDialog);
+
+document.querySelectorAll('input[name="exportScope"]').forEach(r => r.addEventListener('change', () => {
+  const isRoad = document.getElementById('exportScopeRoad').checked;
+  document.getElementById('exportRoadSelect').style.display = isRoad ? '' : 'none';
+  document.querySelectorAll('input[name="exportScope"]').forEach(syncExportChipClass);
+  renderExportColumns(isRoad ? 'road' : 'all');
+}));
+
+document.getElementById('exportColumnsCancel').addEventListener('click', () => {
+  document.getElementById('exportColumnsDialog').close();
+});
+
+document.getElementById('exportColumnsConfirm').addEventListener('click', () => {
+  const dlg = document.getElementById('exportColumnsDialog');
+  const chosen = [...document.querySelectorAll('.export-col-chk:checked')].map(c => c.value);
+  if (!chosen.length) { uiToast('Pick at least one column.', 'error'); return; }
+  let url = '/api/db/export/summary?columns=' + encodeURIComponent(chosen.join(','));
+  if (document.getElementById('exportScopeRoad').checked) {
+    const roadNo = document.getElementById('exportRoadSelect').value;
+    if (!roadNo) { uiToast('Pick a road first.', 'error'); return; }
+    url += '&road_no=' + encodeURIComponent(roadNo);
+  }
+  dlg.close();
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+
 document.getElementById('overrideOnlyChk').addEventListener('change', renderEditLog);
 
 document.getElementById('addRoadToggle').addEventListener('click', () => toggleAddRoadForm());
 
 initSidenav();
+
+/* =====================================================================
+   LIVE REFRESH - wires live-refresh.js to this page. Server: markers in
+   live_change_marker (db/05_live_change.sql) -> GET /api/db/live/changes.
+   LIVE_TABLE_TABS: which tabs show data from which table. The Roads panels
+   that are read-only sub-pages (View Past Data, Bottlenecks, Pyramid) are
+   re-opened after a reload; form panels count as busy so a half-typed
+   entry is never overwritten (a "new updates" banner is shown instead).
+   ===================================================================== */
+const LIVE_TABLE_TABS = {
+  road: ['overview', 'charts', 'roads', 'critical-path', 'performance', 'targets', 'bottlenecks', 'milestones', 'audit'],
+  activity: ['overview', 'charts', 'roads', 'critical-path', 'performance', 'targets', 'bottlenecks', 'milestones', 'audit'],
+  weekly_entry: ['overview', 'charts', 'roads', 'critical-path', 'performance', 'targets', 'bottlenecks', 'milestones'],
+  manual_issue: ['bottlenecks'],
+  road_issue: ['roads'],
+  data_issue: ['issues'],
+  edit_log: ['editlog'],
+};
+
+// "Busy" = the user has something half-done that a silent reload would wipe:
+// a modal open, or typed-into (changed from default) fields in an open form or
+// panel, or the cursor in a text box. Merely having a panel open to look at it
+// is NOT busy.
+function liveEditBusy() {
+  if (document.querySelector('dialog[open]')) return true;
+  const changed = el => {
+    if (el.type === 'button' || el.type === 'submit' || el.type === 'hidden') return false;
+    if (el.tagName === 'SELECT') return [...el.options].some(o => o.selected !== o.defaultSelected);
+    if (el.type === 'checkbox' || el.type === 'radio') return el.checked !== el.defaultChecked;
+    return el.value !== el.defaultValue;
+  };
+  const roots = document.querySelectorAll(
+    '.edit-form:not([hidden]), [id^="road-weekly-"]:not([hidden]), [id^="road-editacts-"]:not([hidden]), ' +
+    '[id^="road-issue-"]:not([hidden]), #manualIssueFormWrap, #addRoadFormWrap, #importCsvFormWrap');
+  for (const r of roots) {
+    if (r.offsetParent === null) continue;               // not visible
+    if ([...r.querySelectorAll('input, textarea, select')].some(changed)) return true;
+  }
+  const el = document.activeElement;
+  return !!(el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && !el.closest('.filter-bar') && el.closest('#app'));
+}
+
+const LIVE_REOPEN = {
+  'road-weeklydata-': 'data-road-weeklydata',
+  'road-bottlenecks-': 'data-road-bottlenecks',
+  'road-pyramid-': 'data-road-pyramid',
+};
+async function liveReloadRoads() {
+  const open = [];
+  Object.entries(LIVE_REOPEN).forEach(([prefix, attr]) => {
+    document.querySelectorAll(`[id^="${prefix}"]:not([hidden]):not(:empty)`).forEach(el =>
+      open.push([attr, el.id.slice(prefix.length)]));
+  });
+  await refreshLiveRoads();
+  for (const [attr, rn] of open) {
+    const btn = document.querySelector(`[${attr}="${rn}"]`);
+    if (btn) btn.click();
+  }
+}
+
+window.LIVE_FEED = LiveRefresh.start({
+  endpoint: '/api/db/live/changes',
+  tableTabs: LIVE_TABLE_TABS,
+  activeTab: () => (document.querySelector('.nav-item.active') || {}).dataset?.tab,
+  tabs: {
+    overview: { key: 'roads-data', reload: liveReloadRoads, busy: liveEditBusy },
+    roads: { key: 'roads-data', reload: liveReloadRoads, busy: liveEditBusy },
+    charts: { reload: renderChartsTab },
+    'critical-path': { reload: () => loadCriticalPath(document.getElementById('cpmRoadSelect').value) },
+    performance: { reload: loadPerformanceData },
+    targets: { reload: loadTargetData },
+    bottlenecks: { reload: renderBottlenecksTab, busy: liveEditBusy },
+    milestones: { reload: renderMilestonesTab },
+    issues: { reload: renderIssues },
+    audit: { reload: renderWeightAudit },
+    editlog: { reload: renderEditLog },
+  },
+  onChange: () => { renderNavBadges(); },
+  // Feed is live -> the manual Reload button is redundant; hide it. If the
+  // triggers aren't installed (enabled:false) the button stays as a fallback.
+  onEnabled: on => { const b = document.getElementById('refreshBtn'); if (b) b.hidden = on; },
+});
 
 init()
   .then(() => restoreActiveTab())

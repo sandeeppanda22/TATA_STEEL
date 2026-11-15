@@ -33,3 +33,8 @@ services:
       # Use the Neon POOLED endpoint host (…-pooler…) + ?sslmode=require.
       - key: DATABASE_URL
         sync: false
+      # Safety lock: while "no" the build NEVER touches the database (no schema,
+      # no seed). Set to "yes" only to bootstrap a brand-new empty DB, deploy
+      # once, then set it back to "no".
+      - key: ALLOW_DB_BOOTSTRAP
+        value: "no"

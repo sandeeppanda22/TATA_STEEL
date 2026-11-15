@@ -27,6 +27,9 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
+  position: sticky;      /* header stays visible while the page scrolls */
+  top: 0;
+  z-index: 100;
 }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-mark { font-weight: 800; font-size: 20px; letter-spacing: 1px; margin-right: 12px; }
@@ -84,7 +87,9 @@ body {
   min-height: calc(100vh - 65px);
   padding: 16px 0;
   position: sticky;
-  top: 0;
+  top: 65px;             /* sits just under the sticky header */
+  max-height: calc(100vh - 65px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -183,7 +188,7 @@ button.pill { cursor: pointer; font-family: inherit; border: 1px solid transpare
 .road-head.open td .pill-bad,
 .road-head.open td .pill-warn { background: #fff; }
 
-main { flex: 1; min-width: 0; padding: 20px 24px 48px; max-width: 1200px; }
+main { flex: 1; min-width: 0; padding: 20px 24px 48px; width: 100%; max-width: none; }  /* fills the space beside the sidebar at any screen size */
 
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
@@ -407,6 +412,132 @@ table.data-table.sub th { background: #E3EAF0; }
   text-decoration: none;
 }
 .btn-small:hover { background: var(--steel-light); }
+.btn-small:disabled { opacity: .5; cursor: default; }
+.btn-small:disabled:hover { background: #fff; }
+
+/* Dedicated rule (not .panel) so this dialog keeps the browser's native
+   modal centering - .panel's margin-bottom:20px would override the
+   margin:auto the UA stylesheet uses to center a <dialog>, pulling it down
+   toward the bottom of the viewport instead of dead-center.
+   NB: inset:0 together with an explicit top/left/transform fights itself
+   (top/left override two of the four inset sides, leaving right:0 and
+   bottom:0 in place, which forces the box to stretch into the right half
+   of the viewport instead of centering) - so this uses ONLY inset:0 +
+   margin:auto, exactly like the UA stylesheet's own dialog:modal rule,
+   with width left auto so the box sizes to its content/min-width. */
+.export-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  min-width: 340px;
+  max-width: 90vw;
+  width: fit-content;
+  height: fit-content;
+  background: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 0;
+  box-shadow: 0 18px 48px rgba(6, 26, 48, .35);
+  overflow: hidden;
+}
+.export-dialog[open] { display: block; }
+#exportColumnsDialog::backdrop { background: rgba(10, 20, 35, .55); }
+
+.export-dialog-head {
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-dark) 100%);
+  color: #fff;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.export-dialog-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.15);
+  font-size: 15px;
+}
+.export-dialog-head h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: .2px; }
+
+.export-dialog-body { padding: 18px 20px 6px; }
+
+.export-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--steel);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 8px;
+}
+
+.export-scope-row { display: flex; gap: 10px; margin-bottom: 10px; }
+.export-scope-card {
+  flex: 1;
+  position: relative;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: border-color .15s, background .15s;
+}
+.export-scope-card:hover { border-color: var(--steel); background: var(--steel-light); }
+.export-scope-card input[type="radio"] { position: absolute; top: 10px; right: 10px; accent-color: var(--navy); }
+.export-scope-card:has(input:checked), .export-scope-card.is-checked { border-color: var(--navy); background: #EEF4FB; }
+.export-scope-title { font-size: 13px; font-weight: 700; color: var(--navy); }
+.export-scope-sub { font-size: 11px; color: var(--steel); }
+
+.export-road-select { width: 100%; margin: 2px 0 10px; }
+
+.export-columns-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.export-col-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.export-col-chip:hover { border-color: var(--steel); background: var(--steel-light); }
+.export-col-chip:has(input:checked), .export-col-chip.is-checked { border-color: var(--navy); background: #EEF4FB; color: var(--navy); font-weight: 600; }
+.export-col-chip input[type="checkbox"] { accent-color: var(--navy); }
+
+.export-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  background: var(--steel-light);
+  border-top: 1px solid var(--border);
+}
+
+.btn-export-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-export-primary:hover { background: #a60d26; }
 
 .btn-edit { border-color: var(--navy); color: var(--navy); }
 .btn-edit:hover { background: var(--navy); color: #fff; }
@@ -529,3 +660,56 @@ table.weekly-table { margin-bottom: 10px; }
 .movement-stat strong, .movement-stat b { color: var(--navy); font-weight: 700; }
 .move-up { color: var(--ok); font-weight: 700; }
 .move-down { color: var(--accent); font-weight: 700; }
+
+/* Live refresh: "new updates" banner shown when the active tab is busy. */
+.live-banner {
+  position: fixed; right: 20px; bottom: 20px; z-index: 50;
+  display: flex; align-items: center; gap: 12px;
+  background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--steel);
+  border-radius: 6px; padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--steel);
+  box-shadow: 0 4px 14px rgba(0,0,0,.15);
+}
+.live-banner[hidden] { display: none; }
+
+/* Issue text (road issues panel): red + bold. */
+.issue-text { color: var(--accent, #c0392b); font-weight: 700; }
+.btn-danger { font: inherit; font-size: 13px; padding: 4px 12px; border: 1px solid var(--accent, #c0392b);
+  background: #fff; color: var(--accent, #c0392b); border-radius: 4px; cursor: pointer; }
+.btn-danger:hover { background: var(--accent, #c0392b); color: #fff; }
+
+/* In-app notifications (replace native alert/confirm). */
+.ui-toast-host { position: fixed; top: 16px; right: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
+.ui-toast { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--steel); border-radius: 6px;
+  padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--steel); box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  cursor: pointer; transition: opacity .2s; }
+.ui-toast-ok { border-left-color: var(--ok, #2e7d32); }
+.ui-toast-error { border-left-color: var(--accent, #c0392b); color: var(--accent, #c0392b); }
+.ui-toast.leaving { opacity: 0; }
+.ui-dialog { border: 1px solid var(--border); border-left: 4px solid var(--steel); border-radius: 8px; padding: 0;
+  max-width: 460px; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+.ui-dialog::backdrop { background: rgba(10, 25, 40, .45); }
+.ui-dialog-body { padding: 18px 20px; font-size: 14px; white-space: pre-line; color: var(--ink, #1d2a35); }
+.ui-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px 14px; }
+
+/* "Issue" road button: red + bold (it flags a site hindrance). */
+.btn-small.btn-issue { color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.btn-small.btn-issue:hover, .btn-small.btn-issue.active { background: var(--accent); color: #fff; }
+
+/* Gap between a road's status strip and its action buttons. */
+.road-status { margin-bottom: 14px; }
+
+/* Selectable summary rows (Performance / Targets): click to open road-wise detail. */
+.sel-table .sel-row { cursor: pointer; }
+.sel-table .sel-row:hover td { background: #EEF3F7 !important; }
+.sel-table .sel-row:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+.sel-table .sel-row td:first-child::before { content: "\25B8  "; color: var(--accent); }
+.sel-table .sel-row.selected td { background: var(--navy) !important; color: #fff; font-weight: 600; }
+.sel-table .sel-row.selected td:first-child::before { content: "\25BE  "; color: #fff; }
+.sel-detail[hidden] { display: none; }
+.sel-detail > td { background: #FAFBFC !important; }
+
+/* Targets quick-range buttons (7 / 14 / 30 days from tomorrow). */
+.range-btns { display: inline-flex; gap: 6px; }
+.btn-range { font: inherit; font-size: 13px; padding: 5px 12px; border: 1px solid var(--navy); background: #fff;
+  color: var(--navy); border-radius: 4px; cursor: pointer; font-weight: 600; }
+.btn-range:hover, .btn-range.active { background: var(--navy); color: #fff; }

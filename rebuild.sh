@@ -168,6 +168,12 @@ echo
 echo "${C_CYAN}${C_BOLD}6/7 Applying schema (idempotent - creates only what's missing, drops nothing) ...${C_RESET}"
 $PSQL -f db/00_schema.sql
 
+echo "${C_CYAN}     activity unique-key ALTER (idempotent, no data change) ...${C_RESET}"
+$PSQL -f db/06_alter_activity_unique.sql
+
+echo "${C_CYAN}     live-change feed triggers (idempotent) ...${C_RESET}"
+$PSQL -f db/05_live_change.sql
+
 echo
 echo "${C_CYAN}${C_BOLD}7/7 Loading seed (incremental - ON CONFLICT DO NOTHING, adds only new roads/activities/issues) ...${C_RESET}"
 $PSQL -f db/01_seed.sql

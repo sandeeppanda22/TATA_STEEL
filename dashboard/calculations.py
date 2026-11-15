@@ -172,6 +172,48 @@ def road_summary_rows(line_manager=None):
     return out
 
 
+def road_activity_rows(road_no):
+    """One row per activity for a SINGLE road: planned vs actual qty/% and
+    status, at activity grain.
+
+    This is deliberately a different shape from road_summary_rows (which is
+    one row per road across many roads) - a single-road export is about
+    that road's activities, not about comparing it to other roads, so
+    "activities count"/"vendor"/"line_manager" (useful across many roads)
+    don't apply here, while per-activity planned_qty/actual_qty/dates do.
+    planned_pct uses each activity's own straight-line expected % for today
+    (OPEN-02), since activities on the same road can have different
+    start/end windows (status mirrors road_summary_rows' On track/Behind
+    convention, applied per activity instead of per road).
+    """
+    today = datetime.date.today()
+    acts = db.query(
+        """
+        SELECT a.activity_id, a.raw_name, a.major, a.unit, a.planned_qty,
+               a.start_date, a.end_date,
+               COALESCE(SUM(w.actual_qty), 0) AS cum_qty
+        FROM activity a LEFT JOIN weekly_entry w ON w.activity_id = a.activity_id
+        WHERE a.road_no = %s
+        GROUP BY a.activity_id, a.raw_name, a.major, a.unit, a.planned_qty,
+                 a.start_date, a.end_date
+        ORDER BY a.sheet_row_order
+        """, (road_no,))
+    out = []
+    for a in acts:
+        planned = float(a["planned_qty"]) if a["planned_qty"] else 0.0
+        cum = float(a["cum_qty"])
+        actual_pct = round(min(cum / planned * 100, 100), 1) if planned else 0.0
+        planned_pct = round(_expected_pct_today(a["start_date"], a["end_date"], today), 1)
+        status = "On track" if actual_pct >= planned_pct - 1e-6 else "Behind"
+        out.append({
+            "activity": a["raw_name"], "major": a["major"] or "", "unit": a["unit"] or "",
+            "planned_qty": planned, "actual_qty": cum,
+            "actual_pct": actual_pct, "planned_pct": planned_pct,
+            "start_date": a["start_date"], "end_date": a["end_date"], "status": status,
+        })
+    return out
+
+
 # ---------------------------------------------------------------------------
 # OPEN-04: vendor / line-manager performance - "all" measures.
 #   - progress_pct: weighted road progress across their roads (BR-06/07 style)
@@ -190,21 +232,34 @@ def _expected_pct_today(start_date, end_date, today):
     return round((today - start_date).days / (end_date - start_date).days * 100, 2)
 
 
-def _group_performance(group_field, line_manager=None):
-    today = datetime.date.today()
+def _road_filter(line_manager=None, vendor=None):
+    """WHERE clause + params restricting roads by line manager and/or vendor."""
+    conds, params = [], []
     if line_manager:
-        roads = db.query(
-            f"SELECT road_no, {group_field} AS grp, length_m, start_date, end_date "
-            "FROM road WHERE line_manager = %s", (line_manager,))
-    else:
-        roads = db.query(
-            f"SELECT road_no, {group_field} AS grp, length_m, start_date, end_date FROM road")
+        conds.append("line_manager = %s"); params.append(line_manager)
+    if vendor:
+        conds.append("vendor = %s"); params.append(vendor)
+    return (" WHERE " + " AND ".join(conds)) if conds else "", tuple(params)
+
+
+def _group_performance(group_field, line_manager=None, vendor=None):
+    """Per vendor / line manager: progress %, activities behind, planned vs
+    actual QUANTITY (summed per unit only - m, m3, nos... aren't additive) and a
+    road-wise breakdown (each road's progress/planned % and its activities'
+    quantities) for the UI's click-to-expand row."""
+    today = datetime.date.today()
+    where, params = _road_filter(line_manager, vendor)
+    roads = db.query(
+        f"SELECT road_no, location, {group_field} AS grp, length_m FROM road{where}", params)
     acts = db.query(
         """
-        SELECT a.activity_id, a.road_no, a.start_date, a.end_date, a.planned_qty,
+        SELECT a.activity_id, a.road_no, a.raw_name, a.unit, a.major, a.weight_pct, a.is_drain,
+               a.start_date, a.end_date, a.planned_qty,
                COALESCE(SUM(w.actual_qty), 0) AS cum_qty
         FROM activity a LEFT JOIN weekly_entry w ON w.activity_id = a.activity_id
-        GROUP BY a.activity_id, a.road_no, a.start_date, a.end_date, a.planned_qty
+        GROUP BY a.activity_id, a.road_no, a.raw_name, a.unit, a.major, a.weight_pct, a.is_drain,
+                 a.start_date, a.end_date, a.planned_qty, a.sheet_row_order
+        ORDER BY a.sheet_row_order
         """
     )
     acts_by_road = {}
@@ -215,38 +270,235 @@ def _group_performance(group_field, line_manager=None):
     for r in roads:
         grp = r["grp"] or "(unassigned)"
         pct, _, _ = road_progress(r["road_no"])
+        ra = acts_by_road.get(r["road_no"], [])
         o = out.setdefault(grp, {"group": grp, "roads": 0, "weighted_pct_sum": 0.0,
-                                 "length_sum": 0.0, "slippage_days": [], "activities_behind": 0})
+                                 "length_sum": 0.0, "activities_behind": 0,
+                                 "units": {}, "road_rows": []})
         o["roads"] += 1
         o["weighted_pct_sum"] += pct * float(r["length_m"])
         o["length_sum"] += float(r["length_m"])
-        if r["end_date"]:
-            o["slippage_days"].append((today - r["end_date"]).days if pct < 100 else None)
-        for a in acts_by_road.get(r["road_no"], []):
-            exp = _expected_pct_today(a["start_date"], a["end_date"], today)
-            act_pct = (float(a["cum_qty"]) / float(a["planned_qty"]) * 100) if a["planned_qty"] else 0
-            if act_pct < exp - 1e-6:
+        act_rows = []
+        for a in ra:
+            pq = float(a["planned_qty"]) if a["planned_qty"] else 0.0
+            done = float(a["cum_qty"])
+            act_pct = (done / pq * 100) if pq else 0
+            if act_pct < _expected_pct_today(a["start_date"], a["end_date"], today) - 1e-6:
                 o["activities_behind"] += 1
+            u = o["units"].setdefault(a["unit"] or "-", {"planned_qty": 0.0, "actual_qty": 0.0})
+            u["planned_qty"] += pq
+            u["actual_qty"] += done
+            act_rows.append({
+                "activity": a["raw_name"], "unit": a["unit"] or "",
+                "planned_qty": round(pq, 2), "actual_qty": round(done, 2),
+                "actual_pct": round(min(act_pct, 100), 1),
+            })
+        o["road_rows"].append({
+            "road_no": r["road_no"], "location": r["location"],
+            "progress_pct": round(pct, 2),
+            "planned_pct": round(_road_planned_pct(ra, today), 2),
+            "activities": act_rows,
+        })
 
     results = []
     for grp, o in out.items():
-        slips = [s for s in o["slippage_days"] if s is not None]
         results.append({
             "group": grp,
             "roads": o["roads"],
             "progress_pct": round(o["weighted_pct_sum"] / o["length_sum"], 2) if o["length_sum"] else 0,
-            "avg_slippage_days": round(sum(slips) / len(slips), 1) if slips else None,
             "activities_behind": o["activities_behind"],
+            "quantity_by_unit": [
+                {"unit": u, "planned_qty": round(q["planned_qty"], 2), "actual_qty": round(q["actual_qty"], 2)}
+                for u, q in sorted(o["units"].items())],
+            "road_rows": sorted(o["road_rows"], key=lambda x: x["road_no"]),
         })
     return sorted(results, key=lambda x: -x["progress_pct"])
 
 
-def vendor_performance(line_manager=None):
-    return _group_performance("vendor", line_manager)
+def vendor_performance(line_manager=None, vendor=None):
+    return _group_performance("vendor", line_manager, vendor)
 
 
-def line_manager_performance(line_manager=None):
-    return _group_performance("line_manager", line_manager)
+def line_manager_performance(line_manager=None, vendor=None):
+    return _group_performance("line_manager", line_manager, vendor)
+
+
+# ---------------------------------------------------------------------------
+# Monthly backlog + next-month target, per vendor / line manager.
+#
+# Everything is a BR-06 weighted road % (same basis as road_progress), then
+# length-weighted across a group's roads (same basis as _group_performance),
+# so the figures are comparable with the existing Progress % column.
+#   planned(d)  straight-line planned % at date d            (OPEN-02)
+#   actual(d)   recorded % counting ledger rows with week_start_date <= d
+#   backlog     max(0, planned(as_of) - actual(as_of)), PER ACTIVITY, weighted
+#   target      max(0, planned(as_of + horizon) - actual(as_of)), per activity
+#   next_planned target - backlog: work still needed in the window on top of
+#               the backlog. It already accounts for actual progress - an
+#               activity ahead of schedule needs less (or none) of the
+#               window's scheduled work.
+# ---------------------------------------------------------------------------
+_GROUP_FIELDS = ("vendor", "line_manager")
+
+
+def _month_end(year, month):
+    nxt = datetime.date(year + (month == 12), month % 12 + 1, 1)
+    return nxt - datetime.timedelta(days=1)
+
+
+def backlog_months():
+    """Months (YYYY-MM) for the backlog dropdown: from the programme's first
+    activity start up to the CURRENT month. Backlog is work that was due and
+    isn't done, so a future month has none and is never offered."""
+    r = db.query("SELECT MIN(start_date) AS lo FROM activity")[0]
+    today = datetime.date.today()
+    lo = min(x for x in (r["lo"], today) if x)
+    out, y, m = [], lo.year, lo.month
+    while (y, m) <= (today.year, today.month):
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = y + (m == 12), m % 12 + 1
+    return out
+
+
+def group_plan(group_field, as_of, horizon_days=30, line_manager=None, vendor=None, detail=False):
+    """Per-group actual / planned / backlog / next-period planned / target,
+    all as of `as_of` (a date). See the block comment above for definitions.
+
+    detail=True also returns, per group, a road-wise breakdown (`road_rows`,
+    each with its activities' quantities) and `quantity_by_unit` totals.
+    Quantities are only ever summed within one unit (m, m3, nos ... are not
+    additive), which is why the group totals are keyed by unit."""
+    if group_field not in _GROUP_FIELDS:
+        raise ValueError(f"group_field must be one of {_GROUP_FIELDS}")
+    horizon_end = as_of + datetime.timedelta(days=horizon_days)
+    where, params = _road_filter(line_manager, vendor)
+    roads = db.query(f"SELECT road_no, location, {group_field} AS grp, length_m FROM road{where}", params)
+    acts = db.query(
+        "SELECT activity_id, road_no, raw_name, unit, major, weight_pct, is_drain, "
+        "planned_qty, start_date, end_date FROM activity ORDER BY sheet_row_order")
+    cum = {r["activity_id"]: float(r["q"]) for r in db.query(
+        "SELECT activity_id, SUM(actual_qty) AS q FROM weekly_entry "
+        "WHERE week_start_date <= %s GROUP BY activity_id", (as_of,))}
+    acts_by_road = {}
+    for a in acts:
+        acts_by_road.setdefault(a["road_no"], []).append(a)
+
+    groups = {}
+    for r in roads:
+        ra = acts_by_road.get(r["road_no"], [])
+        w = float(r["length_m"] or 0)
+        actual = _road_pct_from_cum(ra, cum)
+        planned = _road_planned_pct(ra, as_of)
+                # Backlog / target are worked out PER ACTIVITY against its actual
+        # progress (an activity that is ahead of schedule does not offset one
+        # that is behind), then BR-06 weighted into the road:
+        #   backlog = max(0, planned(as_of)  - actual)
+        #   target  = max(0, planned(to)     - actual)   <- needs actual too
+        #   next    = target - backlog  (work still needed in the window
+        #                                beyond the backlog; 0 if already ahead)
+        backlog = target = 0.0
+        behind = 0
+        act_rows = []
+        for a in ra:
+            pq = float(a["planned_qty"]) if a["planned_qty"] else 0
+            done = cum.get(a["activity_id"], 0.0)
+            ap = (done / pq * 100) if pq else 0
+            exp0 = _expected_pct_today(a["start_date"], a["end_date"], as_of)
+            exp1 = _expected_pct_today(a["start_date"], a["end_date"], horizon_end)
+            if ap < exp0 - 1e-6:
+                behind += 1
+            if a["major"] and not a["is_drain"]:
+                wt = float(a["weight_pct"]) / 100
+                capped = min(ap, 100.0)
+                backlog += wt * max(0.0, exp0 - capped)
+                target += wt * max(0.0, exp1 - capped)
+            if detail:
+                bq = max(0.0, pq * exp0 / 100 - done)
+                tq = max(0.0, pq * exp1 / 100 - done)
+                nq = tq - bq
+                if tq < 0.005:
+                    continue  # nothing left to do in this period (no backlog, none needed)
+                act_rows.append({
+                    "activity": a["raw_name"], "unit": a["unit"] or "",
+                    "planned_qty": round(pq, 2), "actual_qty": round(done, 2),
+                    "backlog_qty": round(bq, 2), "next_planned_qty": round(nq, 2),
+                    "target_qty": round(tq, 2),
+                })
+        nxt = target - backlog
+        g = groups.setdefault(r["grp"] or "(unassigned)", {
+            "roads": 0, "w": 0.0, "actual": 0.0, "planned": 0.0, "backlog": 0.0,
+            "next": 0.0, "target": 0.0, "behind": 0, "road_rows": [], "units": {}})
+        if detail:  # every road is listed, even with no activity rows in this period
+            g["road_rows"].append({
+                "road_no": r["road_no"], "location": r["location"],
+                "actual_pct": round(actual, 2), "planned_pct": round(planned, 2),
+                "backlog_pct": round(backlog, 2), "next_planned_pct": round(nxt, 2),
+                "target_pct": round(target, 2),
+                "target_cumulative_pct": round(min(100.0, actual + target), 2),
+                "activities": act_rows,
+            })
+            for ar in act_rows:
+                u = g["units"].setdefault(ar["unit"] or "-", {"backlog_qty": 0.0, "next_planned_qty": 0.0, "target_qty": 0.0})
+                for k in u:
+                    u[k] += ar[k]
+        g["roads"] += 1
+        g["w"] += w
+        g["behind"] += behind
+        for k, v in (("actual", actual), ("planned", planned), ("backlog", backlog),
+                     ("next", nxt), ("target", target)):
+            g[k] += v * w
+
+    out = []
+    for name, g in groups.items():
+        d = g["w"] or 1.0
+        actual = g["actual"] / d
+        extra = {}
+        if detail:
+            extra = {
+                "road_rows": sorted(g["road_rows"], key=lambda x: x["road_no"]),
+                "quantity_by_unit": [
+                    {"unit": u, **{k: round(v, 2) for k, v in q.items()}}
+                    for u, q in sorted(g["units"].items())],
+            }
+        out.append({
+            **extra,
+            "group": name, "roads": g["roads"],
+            "actual_pct": round(actual, 2),
+            "planned_pct": round(g["planned"] / d, 2),
+            "backlog_pct": round(g["backlog"] / d, 2),
+            "next_planned_pct": round(g["next"] / d, 2),
+            "target_pct": round(g["target"] / d, 2),
+            "target_cumulative_pct": round(min(100.0, actual + g["target"] / d), 2),
+            "activities_behind": g["behind"],
+        })
+    return sorted(out, key=lambda x: -x["backlog_pct"])
+
+
+def group_backlog(group_field, month=None, line_manager=None, vendor=None):
+    """Backlog as at the END of `month` (YYYY-MM, default current month). For
+    the current month the "end" is today - days that haven't happened can't
+    have produced a backlog. Future months are rejected."""
+    today = datetime.date.today()
+    y, m = (int(x) for x in month.split("-")) if month else (today.year, today.month)
+    if (y, m) > (today.year, today.month):
+        raise ValueError("backlog is only available up to the current month")
+    as_of = min(_month_end(y, m), today)
+    return {"month": f"{y:04d}-{m:02d}", "as_of": as_of.isoformat(),
+            "rows": group_plan(group_field, as_of, 30, line_manager, vendor)}
+
+
+def group_target(group_field, date_from=None, date_to=None, line_manager=None, vendor=None):
+    """Target for the window date_from..date_to (default: today .. +30 days;
+    the window can't start in the past - a target is forward-looking)
+    = backlog as at date_from + planned work between date_from and date_to."""
+    today = datetime.date.today()
+    start = date_from or today
+    end = date_to or (start + datetime.timedelta(days=30))
+    if start < today:
+        raise ValueError("a target window must start today or later; past dates are not allowed")
+    if end <= start:
+        raise ValueError("'to' date must be after 'from' date")
+    return {"from": start.isoformat(), "to": end.isoformat(),
+            "rows": group_plan(group_field, start, (end - start).days, line_manager, vendor, detail=True)}
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +540,7 @@ def bottlenecks(threshold_pct=15, stale_weeks=3):
             exp = _expected_pct_today(a["start_date"], a["end_date"], today)
             reasons = []
             if exp - pct > threshold_pct:
-                reasons.append(f"behind planned by {exp - pct:.1f} pts (> {threshold_pct})")
+                reasons.append(f"behind planned by {exp - pct:.1f}% (more than {threshold_pct}%)")
             if i + 1 < len(seq_acts):
                 nxt = seq_acts[i + 1]
                 nxt_pct = (float(nxt["cum_qty"]) / float(nxt["planned_qty"]) * 100) if nxt["planned_qty"] else 0

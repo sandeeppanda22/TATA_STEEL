@@ -10,7 +10,7 @@ build/run/rebuild mechanics.
 
 | Layer | State |
 |---|---|
-| **DB** (`db/00_schema.sql`, `db/01_seed.sql`) | Schema is idempotent (`IF NOT EXISTS`) and now also has `manual_issue` (manual bottleneck log); seed is generated as `ON CONFLICT DO NOTHING`. Dry-run-verified against the dataset (17 roads, 177 activities, 10 data issues). **Never executed against a live Postgres in any session** this doc knows of. 6 tables: `road`, `activity`, `weekly_entry`, `data_issue`, `edit_log`, `manual_issue`. |
+| **DB** (`db/00_schema.sql`, `db/01_seed.sql`) | Schema is idempotent (`IF NOT EXISTS`) and now also has `manual_issue` (manual bottleneck log); seed is generated as `ON CONFLICT DO NOTHING`. Dry-run-verified against the dataset (17 roads, 177 activities, 10 data issues). **Never executed against a live Postgres in any session** this doc knows of. 8 tables: `road`, `activity`, `weekly_entry`, `data_issue`, `edit_log`, `manual_issue`, `road_issue`, `road_issue_shift` (plus `live_change_marker` from `05_live_change.sql`). |
 | **DB — backup/restore** (`db/03_backup.sql`, `db/04_restore.sql`) | **Obsolete in the normal flow** — `rebuild.sh` no longer drops the schema and no longer calls them. Written for the old destructive rebuild, never executed; manual option only. `db/02_verify.sql` is still run by `rebuild.sh`. |
 | **API — static tier** (`/api/overview`, `/api/refresh`) | **Removed.** `dashboard/main.py` serves only `/api/db/*` and static files; there is no JSON data tier and no `data/*.json` files in the repo any more. |
 | **API — DB tier** (`/api/db/*` in `dashboard/db_routes.py`) | Code-complete: roads, road detail, weekly entry (GET/POST append-only ledger, DELETE by `entry_id`; BR-08 gating removed 2026-10-13), master-data editing (`PUT /roads/{n}`, `PUT /activities/{id}`), `GET /edit-log`, `GET /weight-audit`, overview, vendor/LM performance, bottlenecks, milestones, critical path, data issues. Verified only by import/syntax check — **never run against a live DB**, since §0 above means there's nothing to query yet. Also: `POST /roads` (Add Road), manual bottleneck CRUD (`/manual-bottlenecks`), `POST /weekly/import-csv`, `GET /export/weekly-history`, `GET /export/summary`; several GETs accept `line_manager`. |
@@ -65,6 +65,7 @@ What it does (`rebuild.sh`, 7 steps):
 | 4 | `cd scripts && python3 gen_seed.py` — writes `db/01_seed.sql` as `INSERT ... ON CONFLICT DO NOTHING` |
 | 5 | `python3 scripts/verify_seed.py` — pre-flight. **Exits the rebuild if it fails** (override with `FORCE=1`) |
 | 6 | `db/00_schema.sql` — idempotent (`CREATE SCHEMA/TABLE/INDEX IF NOT EXISTS`); creates only what is missing, no `DROP`, no `ALTER` |
+| 6b | `db/06_alter_activity_unique.sql` (ALTER only; adds the `activity` unique key on DBs created before it existed) then `db/05_live_change.sql` (live-refresh triggers, no data touched) |
 | 7 | `db/01_seed.sql` — adds only roads / activities / data issues not already present (conflict targets: `road(road_no)`, `activity(road_no, raw_name)`, the `data_issue` dedup index) |
 | – | `db/02_verify.sql` — read-only post-load checks (not `ON_ERROR_STOP`) |
 

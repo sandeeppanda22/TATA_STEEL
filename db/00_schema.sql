@@ -179,3 +179,33 @@ CREATE INDEX IF NOT EXISTS idx_manual_issue_road ON manual_issue(road_no);
 -- NOTE on CPM (BR-14/OPEN-03): critical path uses each activity's own
 -- start_date/end_date as-is (overlaps allowed, per ruling). CPM is computed
 -- in the API layer from these dates, not stored as a separate graph table.
+
+-- ---------------------------------------------------------------------------
+-- ROAD_ISSUE  (a site hindrance on one road, with a From/To window. Adding one
+--   shifts the road's not-yet-finished activities later by the window length
+--   (inclusive days) - see POST /api/db/roads/{n}/issues. The date changes
+--   themselves are written to activity/road and logged field-by-field in
+--   edit_log; this row records the cause and how far everything moved.)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS road_issue (
+    issue_id           BIGSERIAL PRIMARY KEY,
+    road_no            INT NOT NULL REFERENCES road(road_no) ON DELETE CASCADE,
+    from_date          DATE NOT NULL,
+    to_date            DATE NOT NULL CHECK (to_date >= from_date),
+    shift_days         INT  NOT NULL CHECK (shift_days >= 1),
+    activities_shifted INT  NOT NULL DEFAULT 0,
+    reason             TEXT,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_road_issue_road ON road_issue(road_no);
+
+-- What each road_issue moved, so editing/deleting the issue can reverse it.
+-- activity_id NULL = the road's own start/end dates. moved_start = whether
+-- the start date moved too (the end date always moves).
+CREATE TABLE IF NOT EXISTS road_issue_shift (
+    shift_id     BIGSERIAL PRIMARY KEY,
+    issue_id     BIGINT NOT NULL REFERENCES road_issue(issue_id) ON DELETE CASCADE,
+    activity_id  BIGINT REFERENCES activity(activity_id) ON DELETE CASCADE,
+    moved_start  BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS idx_road_issue_shift_issue ON road_issue_shift(issue_id);

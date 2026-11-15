@@ -5,17 +5,21 @@ progress, vendor/LM performance, bottlenecks, milestones, CPM.
 Requires db/rebuild.sh to have been run against a reachable Postgres
 (local PGHOST/... or DATABASE_URL) - see dashboard/db.py.
 """
+import contextlib
 import csv
 import datetime
 import decimal
 import io
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+import psycopg2.extras
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from dashboard import calculations as calc
 from dashboard import db
+from dashboard import live_feed
 
 router = APIRouter(prefix="/api/db", tags=["db"])
 
@@ -302,13 +306,75 @@ def overview(line_manager: str | None = None):
 
 
 @router.get("/performance/vendor")
-def vendor_performance(line_manager: str | None = None):
-    return calc.vendor_performance(line_manager)
+def vendor_performance(line_manager: str | None = None, vendor: str | None = None):
+    return calc.vendor_performance(line_manager, vendor)
 
 
 @router.get("/performance/line-manager")
-def line_manager_performance(line_manager: str | None = None):
-    return calc.line_manager_performance(line_manager)
+def line_manager_performance(line_manager: str | None = None, vendor: str | None = None):
+    return calc.line_manager_performance(line_manager, vendor)
+
+
+def _group_field(group: str) -> str:
+    if group not in ("vendor", "line_manager"):
+        raise HTTPException(422, "group must be 'vendor' or 'line_manager'")
+    return group
+
+
+@router.get("/performance/months")
+def performance_months():
+    return calc.backlog_months()
+
+
+@router.get("/performance/backlog")
+def performance_backlog(group: str = "vendor", month: str | None = None,
+                        line_manager: str | None = None, vendor: str | None = None):
+    """Backlog per vendor / line manager as at the end of `month` (YYYY-MM)."""
+    if month is not None:
+        try:
+            datetime.datetime.strptime(month, "%Y-%m")
+        except ValueError:
+            raise HTTPException(422, "month must be YYYY-MM")
+    try:
+        return calc.group_backlog(_group_field(group), month, line_manager, vendor)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.get("/performance/target")
+def performance_target(group: str = "vendor", date_from: datetime.date | None = None,
+                       date_to: datetime.date | None = None,
+                       line_manager: str | None = None, vendor: str | None = None):
+    """Target for date_from..date_to (default today..+30d) = backlog at
+    date_from + planned work in the window."""
+    try:
+        return calc.group_target(_group_field(group), date_from, date_to, line_manager, vendor)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.get("/live/changes")
+def live_changes(request: Request):
+    """Cheap change feed for the browser's live refresh: one marker per
+    whitelisted table. Rate-limited per client (60/min). No record data."""
+    nostore = {"Cache-Control": "no-store"}
+    wait = live_feed.limiter.check(live_feed.client_key(request))
+    if wait:
+        return JSONResponse({"detail": "rate limit exceeded"}, status_code=429,
+                            headers={**nostore, "Retry-After": str(wait)})
+    try:
+        rows = db.query(
+            "SELECT table_name, change_seq FROM live_change_marker WHERE table_name = ANY(%s)",
+            (list(live_feed.LIVE_FEED_TABLES),))
+    except Exception as e:  # marker table not installed yet -> feed simply off
+        if "live_change_marker" in str(e):
+            return JSONResponse({"enabled": False, "changed": []}, headers=nostore)
+        raise
+    seq = {r["table_name"]: int(r["change_seq"]) for r in rows}
+    return JSONResponse(
+        {"enabled": True, "changed": [{"table_name": t, "change_seq": seq.get(t, 0)}
+                                      for t in live_feed.LIVE_FEED_TABLES]},
+        headers=nostore)
 
 
 @router.get("/bottlenecks")
@@ -598,6 +664,222 @@ def _apply_update(table, pk_col, pk_val, current, changes, source_fields):
             table: _jsonify(rows[0])}
 
 
+# ---------------------------------------------------------------------------
+# Road issues (hindrance windows). Adding one pushes the road's unfinished
+# work later by the window length so the plan reflects the lost days.
+#
+#   shift_days = (to_date - from_date) + 1            (inclusive)
+#   activity ends before from_date          -> untouched (already past)
+#   activity fully complete (actual>=planned)-> untouched
+#   activity starts on/after from_date      -> start AND end move +shift_days
+#                                              (anything starting inside the
+#                                              window lands after to_date)
+#   activity in progress across from_date   -> only its end moves +shift_days
+#   road.start_date / end_date              -> same rule as an activity
+# Everything runs in ONE transaction and every changed date is logged in
+# edit_log (road fields as source overrides, BR-01).
+#
+# road_issue_shift remembers exactly what each issue moved (which activities,
+# whether the start moved too, and the road). Editing or deleting an issue
+# first REVERSES that by subtracting shift_days from the current dates (so
+# later manual edits and other issues' shifts are preserved), then - for an
+# edit - re-applies the new window.
+# ---------------------------------------------------------------------------
+class RoadIssueCreate(BaseModel):
+    from_date: datetime.date
+    to_date: datetime.date
+    reason: str | None = None
+
+
+def _issue_days(frm, to):
+    if to < frm:
+        raise HTTPException(422, "to_date must be on or after from_date")
+    return (to - frm).days + 1
+
+
+def _log_dates(cur, table, pk, fld, old_v, new_v, source_override):
+    if old_v != new_v:
+        cur.execute(
+            "INSERT INTO edit_log (table_name, row_pk, field, old_value, new_value, source_override) "
+            "VALUES (%s,%s,%s,%s,%s,%s)",
+            (table, pk, fld, None if old_v is None else str(old_v),
+             None if new_v is None else str(new_v), source_override))
+
+
+def _apply_issue(cur, road_no, issue_id, frm, delta):
+    """Shift the road's unfinished work; remember what moved. Returns counts."""
+    def moved(start, end):
+        if end is None or end < frm:
+            return None
+        if start is not None and start >= frm:
+            return start + delta, end + delta, True
+        return start, end + delta, False
+
+    counts = {"moved": 0, "completed": 0, "ended_before": 0, "no_end_date": 0}
+    cur.execute(
+        """
+        SELECT a.activity_id, a.start_date, a.end_date, a.planned_qty,
+               COALESCE(SUM(w.actual_qty), 0) AS cum
+        FROM activity a LEFT JOIN weekly_entry w ON w.activity_id = a.activity_id
+        WHERE a.road_no = %s
+        GROUP BY a.activity_id, a.start_date, a.end_date, a.planned_qty
+        ORDER BY a.activity_id
+        """, (road_no,))
+    for a in cur.fetchall():
+        if a["end_date"] is None:
+            counts["no_end_date"] += 1
+            continue
+        new = moved(a["start_date"], a["end_date"])
+        if new is None:
+            counts["ended_before"] += 1
+            continue
+        planned = float(a["planned_qty"] or 0)
+        if planned and float(a["cum"]) >= planned - 1e-9:
+            counts["completed"] += 1
+            continue
+        cur.execute("UPDATE activity SET start_date = %s, end_date = %s WHERE activity_id = %s",
+                    (new[0], new[1], a["activity_id"]))
+        cur.execute("INSERT INTO road_issue_shift (issue_id, activity_id, moved_start) VALUES (%s,%s,%s)",
+                    (issue_id, a["activity_id"], new[2]))
+        counts["moved"] += 1
+        _log_dates(cur, "activity", a["activity_id"], "start_date", a["start_date"], new[0], False)
+        _log_dates(cur, "activity", a["activity_id"], "end_date", a["end_date"], new[1], False)
+    cur.execute("SELECT start_date, end_date FROM road WHERE road_no = %s", (road_no,))
+    road = cur.fetchone()
+    rd = moved(road["start_date"], road["end_date"])
+    if rd is not None:
+        cur.execute("UPDATE road SET start_date = %s, end_date = %s WHERE road_no = %s",
+                    (rd[0], rd[1], road_no))
+        cur.execute("INSERT INTO road_issue_shift (issue_id, activity_id, moved_start) VALUES (%s,NULL,%s)",
+                    (issue_id, rd[2]))
+        _log_dates(cur, "road", road_no, "start_date", road["start_date"], rd[0], True)
+        _log_dates(cur, "road", road_no, "end_date", road["end_date"], rd[1], True)
+    return counts
+
+
+def _revert_issue(cur, road_no, issue_id, shift_days):
+    """Undo what _apply_issue did: subtract shift_days from the current dates."""
+    delta = datetime.timedelta(days=shift_days)
+    cur.execute("SELECT activity_id, moved_start FROM road_issue_shift WHERE issue_id = %s", (issue_id,))
+    for sh in cur.fetchall():
+        if sh["activity_id"] is None:
+            cur.execute("SELECT start_date, end_date FROM road WHERE road_no = %s", (road_no,))
+            row = cur.fetchone()
+            if row is None:
+                continue
+            ns = row["start_date"] - delta if (sh["moved_start"] and row["start_date"]) else row["start_date"]
+            ne = row["end_date"] - delta if row["end_date"] else row["end_date"]
+            cur.execute("UPDATE road SET start_date = %s, end_date = %s WHERE road_no = %s", (ns, ne, road_no))
+            _log_dates(cur, "road", road_no, "start_date", row["start_date"], ns, True)
+            _log_dates(cur, "road", road_no, "end_date", row["end_date"], ne, True)
+        else:
+            cur.execute("SELECT start_date, end_date FROM activity WHERE activity_id = %s", (sh["activity_id"],))
+            row = cur.fetchone()
+            if row is None:
+                continue
+            ns = row["start_date"] - delta if (sh["moved_start"] and row["start_date"]) else row["start_date"]
+            ne = row["end_date"] - delta if row["end_date"] else row["end_date"]
+            cur.execute("UPDATE activity SET start_date = %s, end_date = %s WHERE activity_id = %s",
+                        (ns, ne, sh["activity_id"]))
+            _log_dates(cur, "activity", sh["activity_id"], "start_date", row["start_date"], ns, False)
+            _log_dates(cur, "activity", sh["activity_id"], "end_date", row["end_date"], ne, False)
+    cur.execute("DELETE FROM road_issue_shift WHERE issue_id = %s", (issue_id,))
+
+
+def _issue_json(r):
+    return {**r, "from_date": r["from_date"].isoformat(), "to_date": r["to_date"].isoformat(),
+            "created_at": r["created_at"].isoformat()}
+
+
+@contextlib.contextmanager
+def _issue_tx():
+    """One transaction with a dict cursor; commit on success, rollback on error."""
+    with db.get_conn() as conn:
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                yield cur
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+
+def _lock_road(cur, road_no):
+    cur.execute("SELECT road_no FROM road WHERE road_no = %s FOR UPDATE", (road_no,))
+    if not cur.fetchone():
+        raise HTTPException(404, f"Road {road_no} not found")
+
+
+def _today():
+    return datetime.date.today()
+
+
+def _get_issue(cur, road_no, issue_id):
+    cur.execute("SELECT * FROM road_issue WHERE issue_id = %s AND road_no = %s FOR UPDATE", (issue_id, road_no))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, f"Issue {issue_id} not found on road {road_no}")
+    return row
+
+
+def _get_open_issue(cur, road_no, issue_id):
+    """Like _get_issue, but an issue whose To date has passed is closed history
+    and can no longer be edited or deleted."""
+    row = _get_issue(cur, road_no, issue_id)
+    if row["to_date"] < _today():
+        raise HTTPException(409, "This issue's To date has passed; it can no longer be edited or deleted.")
+    return row
+
+
+@router.get("/roads/{road_no}/issues")
+def list_road_issues(road_no: int):
+    return [_issue_json(r) for r in db.query(
+        "SELECT * FROM road_issue WHERE road_no = %s ORDER BY issue_id DESC", (road_no,))]
+
+
+@router.post("/roads/{road_no}/issues", status_code=201)
+def create_road_issue(road_no: int, payload: RoadIssueCreate):
+    shift = _issue_days(payload.from_date, payload.to_date)
+    reason = (payload.reason or "").strip() or None
+    with _issue_tx() as cur:
+        _lock_road(cur, road_no)
+        cur.execute(
+            "INSERT INTO road_issue (road_no, from_date, to_date, shift_days, activities_shifted, reason) "
+            "VALUES (%s,%s,%s,%s,0,%s) RETURNING issue_id",
+            (road_no, payload.from_date, payload.to_date, shift, reason))
+        issue_id = cur.fetchone()["issue_id"]
+        counts = _apply_issue(cur, road_no, issue_id, payload.from_date, datetime.timedelta(days=shift))
+        cur.execute("UPDATE road_issue SET activities_shifted = %s WHERE issue_id = %s", (counts["moved"], issue_id))
+    return {"issue_id": issue_id, "road_no": road_no, "shift_days": shift, **counts}
+
+
+@router.put("/roads/{road_no}/issues/{issue_id}")
+def update_road_issue(road_no: int, issue_id: int, payload: RoadIssueCreate):
+    shift = _issue_days(payload.from_date, payload.to_date)
+    reason = (payload.reason or "").strip() or None
+    with _issue_tx() as cur:
+        _lock_road(cur, road_no)
+        old = _get_open_issue(cur, road_no, issue_id)
+        _revert_issue(cur, road_no, issue_id, old["shift_days"])
+        counts = _apply_issue(cur, road_no, issue_id, payload.from_date, datetime.timedelta(days=shift))
+        cur.execute(
+            "UPDATE road_issue SET from_date=%s, to_date=%s, shift_days=%s, activities_shifted=%s, reason=%s "
+            "WHERE issue_id=%s", (payload.from_date, payload.to_date, shift, counts["moved"], reason, issue_id))
+    return {"issue_id": issue_id, "road_no": road_no, "shift_days": shift, **counts}
+
+
+@router.delete("/roads/{road_no}/issues/{issue_id}")
+def delete_road_issue(road_no: int, issue_id: int):
+    """Delete the issue AND put its shifted dates back."""
+    with _issue_tx() as cur:
+        _lock_road(cur, road_no)
+        old = _get_open_issue(cur, road_no, issue_id)
+        _revert_issue(cur, road_no, issue_id, old["shift_days"])
+        cur.execute("DELETE FROM road_issue WHERE issue_id = %s", (issue_id,))
+    return {"deleted": True, "issue_id": issue_id, "reverted_days": old["shift_days"],
+            "activities_restored": old["activities_shifted"]}
+
+
 @router.delete("/activities/{activity_id}/weekly/{entry_id}")
 def delete_weekly_entry(activity_id: int, entry_id: int):
     """Remove ONE ledger submission by its entry_id. In the append-only model
@@ -852,28 +1134,160 @@ def _csv_response(rows, fieldnames, filename):
     )
 
 
+def _fmt_date_ddmmyyyy(d):
+    """DD-MM-YYYY for any date written into a user-facing text output.
+
+    Mirrors fmtDate() in dashboard.js. The project convention is: dates
+    travel as ISO (YYYY-MM-DD) through the DB and the API because that is
+    machine format - unambiguous and sortable - and are converted to
+    DD-MM-YYYY only at the point a human reads them. Exported files are a
+    human-read surface that does NOT pass through dashboard.js, so the
+    conversion has to happen here instead.
+    """
+    return d.strftime("%d-%m-%Y") if d else ""
+
+
+def _xlsx_response(rows, headers, filename):
+    """Build an .xlsx download with a bold header row and columns
+    auto-sized to their content.
+
+    A plain .csv is just comma-separated text - it has no concept of bold
+    or column width, so there is no CSV-side way to satisfy "headers bold,
+    columns sized to content". A real spreadsheet is the only honest way
+    to deliver that, hence openpyxl (already a project dependency) instead
+    of csv.writer here.
+
+    Date cells are written as real dates carrying an explicit DD-MM-YYYY
+    number format rather than as pre-formatted text: Excel then DISPLAYS
+    DD-MM-YYYY (the project convention) while still treating the value as
+    a date, so sorting and filtering in the spreadsheet stay correct. A
+    text "15-10-2026" would sort alphabetically, which is wrong.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    for r in rows:
+        ws.append(r)
+        for cell in ws[ws.max_row]:
+            if isinstance(cell.value, (datetime.date, datetime.datetime)):
+                cell.number_format = "DD-MM-YYYY"
+
+    for col_idx, header in enumerate(headers, start=1):
+        letter = ws.cell(row=1, column=col_idx).column_letter
+        widest = len(str(header))
+        for r in rows:
+            val = r[col_idx - 1]
+            if isinstance(val, (datetime.date, datetime.datetime)):
+                shown = 10  # DD-MM-YYYY as Excel will render it
+            else:
+                shown = len(str(val)) if val is not None else 0
+            widest = max(widest, shown)
+        ws.column_dimensions[letter].width = widest + 2  # padding so text isn't flush against the cell edge
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 "Cache-Control": "no-store"},
+    )
+
+
 @router.get("/export/weekly-history")
 def export_weekly_history():
     rows = calc.weekly_history_rows()
     data = [
-        [r["week_start_date"].isoformat(), r["road_no"], r["activity"],
+        [_fmt_date_ddmmyyyy(r["week_start_date"]), r["road_no"], r["activity"],
          float(r["actual_qty"]), r["note"] or ""]
         for r in rows
     ]
-    return _csv_response(data, ["week_start_date", "road_no", "activity", "actual_qty", "note"],
+    return _csv_response(data, ["Week Starting", "Road", "Activity", "Actual Qty", "Note"],
                           "progress_history.csv")
 
 
+_SUMMARY_COLUMNS = ["road", "location", "vendor", "line_manager", "activities", "actual_pct", "planned_pct", "status"]
+_SUMMARY_LABELS = {
+    "road": "Road", "location": "Location", "vendor": "Vendor", "line_manager": "Line Manager",
+    "activities": "Activities", "actual_pct": "Actual %", "planned_pct": "Planned %", "status": "Status",
+}
+
+# Single-road export is activity-grain (calc.road_activity_rows), a
+# different shape from the all-roads summary above: "vendor"/"line_manager"/
+# "activities"(count) describe a road among many roads and don't apply to
+# one road's own activity list, while planned_qty/actual_qty/dates do.
+_ROAD_COLUMNS = ["activity", "major", "unit", "planned_qty", "actual_qty",
+                 "actual_pct", "planned_pct", "start_date", "end_date", "status"]
+_ROAD_LABELS = {
+    "activity": "Activity", "major": "Major", "unit": "Unit", "planned_qty": "Planned Qty",
+    "actual_qty": "Actual Qty", "actual_pct": "Actual %", "planned_pct": "Planned %",
+    "start_date": "Start Date", "end_date": "End Date", "status": "Status",
+}
+
+
 @router.get("/export/summary")
-def export_summary(line_manager: str | None = None):
-    rows = calc.road_summary_rows(line_manager)
-    data = [
-        [f"Road {r['road_no']}", r["location"], r["vendor"] or "", r["line_manager"] or "",
-         r["activities"], r["actual_pct"], r["planned_pct"], r["status"]]
-        for r in rows
-    ]
+def export_summary(line_manager: str | None = None, columns: str | None = None, road_no: int | None = None):
+    """Excel (.xlsx) export of the road summary - bold header row, columns
+    auto-sized to content, headers shown in the same wording as the Roads
+    tab UI (not the underlying db/API field names).
+
+    `columns` is an optional comma-separated subset of the columns valid for
+    the chosen scope (the column-picker dialog on the Roads tab sends this)
+    so the user only gets the fields they asked for. Omitted/blank -> all
+    columns for that scope.
+
+    `road_no` switches the export from the all-roads summary
+    (_SUMMARY_COLUMNS, one row per road) to a single road's own activities
+    (_ROAD_COLUMNS, one row per activity) - the two scopes show different
+    things, so they also have different column sets.
+    """
     today = datetime.date.today().isoformat()
-    return _csv_response(
-        data, ["road", "location", "vendor", "line_manager", "activities", "actual_pct", "planned_pct", "status"],
-        f"summary_{today}.csv",
-    )
+
+    if road_no is not None:
+        rows = calc.road_activity_rows(road_no)
+        if not rows:
+            raise HTTPException(404, f"road {road_no} not found or has no activities")
+        full = {
+            "activity": lambda r: r["activity"],
+            "major": lambda r: r["major"],
+            "unit": lambda r: r["unit"],
+            "planned_qty": lambda r: r["planned_qty"],
+            "actual_qty": lambda r: r["actual_qty"],
+            "actual_pct": lambda r: r["actual_pct"],
+            "planned_pct": lambda r: r["planned_pct"],
+            "start_date": lambda r: r["start_date"] or "",
+            "end_date": lambda r: r["end_date"] or "",
+            "status": lambda r: r["status"],
+        }
+        valid_columns, labels = _ROAD_COLUMNS, _ROAD_LABELS
+        fname = f"summary_road{road_no}_{today}.xlsx"
+    else:
+        rows = calc.road_summary_rows(line_manager)
+        full = {
+            "road": lambda r: f"Road {r['road_no']}",
+            "location": lambda r: r["location"],
+            "vendor": lambda r: r["vendor"] or "",
+            "line_manager": lambda r: r["line_manager"] or "",
+            "activities": lambda r: r["activities"],
+            "actual_pct": lambda r: r["actual_pct"],
+            "planned_pct": lambda r: r["planned_pct"],
+            "status": lambda r: r["status"],
+        }
+        valid_columns, labels = _SUMMARY_COLUMNS, _SUMMARY_LABELS
+        fname = f"summary_{today}.xlsx"
+
+    selected = [c.strip() for c in columns.split(",") if c.strip()] if columns else valid_columns
+    unknown = [c for c in selected if c not in valid_columns]
+    if unknown:
+        raise HTTPException(422, f"unknown column(s) for this scope: {', '.join(unknown)}")
+    if not selected:
+        raise HTTPException(422, "select at least one column")
+
+    data = [[full[c](r) for c in selected] for r in rows]
+    headers = [labels[c] for c in selected]
+    return _xlsx_response(data, headers, fname)

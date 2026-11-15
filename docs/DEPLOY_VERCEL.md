@@ -66,6 +66,11 @@ psql "$DATABASE_URL" -f db/00_schema.sql
 # 2. Generate the seed from Source/*.xlsx, then load it (ON CONFLICT DO NOTHING)
 cd scripts && python3 gen_seed.py && cd ..
 psql "$DATABASE_URL" -f db/01_seed.sql
+
+# 3. Live-refresh triggers (idempotent; enables auto-refresh of dashboard tabs).
+#    Re-running step 1 first is what adds the newer road_issue / road_issue_shift
+#    tables (CREATE IF NOT EXISTS - existing tables and rows are untouched).
+psql "$DATABASE_URL" -f db/05_live_change.sql
 ```
 
 The schema is `tata_road`; the app sets `search_path` itself on every

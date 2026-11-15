@@ -28,6 +28,7 @@
       <button class="nav-item" data-tab="roads">Roads &amp; Progress</button>
       <button class="nav-item" data-tab="critical-path">Critical Path</button>
       <button class="nav-item" data-tab="performance">Vendor / LM Performance</button>
+      <button class="nav-item" data-tab="targets">Targets</button>
       <button class="nav-item" data-tab="bottlenecks">Bottlenecks</button>
       <button class="nav-item" data-tab="milestones">Milestones</button>
       <button class="nav-item" data-tab="issues">Data Issues</button>
@@ -114,12 +115,40 @@
           <div id="liveStatus" class="hint"></div>
           <div class="form-row no-print" style="margin-bottom:12px; flex-wrap:wrap;">
             <button type="button" id="addRoadToggle" class="btn-small">+ Add Road</button>
-            <button type="button" id="importCsvToggle" class="btn-small">Import Weekly CSV</button>
-            <a id="exportHistoryLink" class="btn-small" href="/api/db/export/weekly-history" download>Export History CSV</a>
-            <a id="exportSummaryLink" class="btn-small" href="/api/db/export/summary" download>Export Summary CSV</a>
+            <button type="button" id="importCsvToggle" class="btn-small" style="display:none;" disabled title="Import is temporarily disabled">Import Weekly CSV</button>
+            <button type="button" id="exportSummaryToggle" class="btn-small">Export Summary</button>
           </div>
           <div id="importCsvFormWrap" class="panel no-print" style="display:none; margin-bottom:16px;"></div>
           <div id="addRoadFormWrap" class="panel no-print" style="display:none; margin-bottom:16px;"></div>
+          <dialog id="exportColumnsDialog" class="export-dialog no-print">
+            <div class="export-dialog-head">
+              <span class="export-dialog-icon">&#8681;</span>
+              <h3>Export Summary</h3>
+            </div>
+            <div class="export-dialog-body">
+              <div class="export-section-label">Scope</div>
+              <div class="export-scope-row">
+                <label class="export-scope-card">
+                  <input type="radio" name="exportScope" id="exportScopeAll" value="all" checked>
+                  <span class="export-scope-title">All Roads</span>
+                  <span class="export-scope-sub">Overall summary</span>
+                </label>
+                <label class="export-scope-card">
+                  <input type="radio" name="exportScope" id="exportScopeRoad" value="road">
+                  <span class="export-scope-title">Single Road</span>
+                  <span class="export-scope-sub">Pick one road</span>
+                </label>
+              </div>
+              <select id="exportRoadSelect" class="inline-input export-road-select" style="display:none;"></select>
+
+              <div class="export-section-label" style="margin-top:16px;">Columns</div>
+              <div id="exportColumnsList" class="export-columns-grid"></div>
+            </div>
+            <div class="export-dialog-foot">
+              <button type="button" id="exportColumnsCancel" class="btn-small btn-cancel">Cancel</button>
+              <button type="button" id="exportColumnsConfirm" class="btn-export-primary">&#8681; Export Excel</button>
+            </div>
+          </dialog>
           <div class="filter-bar no-print" id="roadFilterBar">
             <label for="roadFilterLm">Line Manager
               <select id="roadFilterLm" class="inline-input"><option value="">All</option></select>
@@ -150,20 +179,78 @@
       </section>
 
       <section class="tab-panel" data-tab-panel="performance">
+        <div class="filter-bar no-print" id="perfFilterBar">
+            <label for="backlogMonthSelect">Backlog month
+              <select id="backlogMonthSelect" class="inline-input"></select>
+            </label>
+            <label for="perfFilterVendor">Vendor
+              <select id="perfFilterVendor" class="inline-input"><option value="">All</option></select>
+            </label>
+            <label for="perfFilterLM">Line Manager
+              <select id="perfFilterLM" class="inline-input"><option value="">All</option></select>
+            </label>
+            <label for="perfFilterStatus">Status
+              <select id="perfFilterStatus" class="inline-input">
+                <option value="">All</option><option value="behind">Behind</option><option value="ok">On / ahead</option>
+              </select>
+            </label>
+            <button type="button" id="perfFilterClear" class="btn-filter-clear">Clear filters</button>
+            <span class="filter-count hint" id="perfFilterCount"></span>
+          </div>
         <section class="panel" id="vendorPerfPanel">
           <h2>Vendor Performance</h2>
           <div id="vendorPerfWrap"></div>
+          <div id="vendorPlanWrap"></div>
         </section>
         <section class="panel" id="lmPerfPanel">
           <h2>Line Manager Performance</h2>
           <div id="lmPerfWrap"></div>
+          <div id="lmPlanWrap"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="targets">
+        <div class="filter-bar no-print" id="tgtFilterBar">
+            <label for="tgtFilterFrom">From
+              <input type="date" id="tgtFilterFrom" class="inline-input">
+            </label>
+            <label for="tgtFilterTo">To
+              <input type="date" id="tgtFilterTo" class="inline-input">
+            </label>
+            <span class="range-btns no-print" role="group" aria-label="Quick range starting tomorrow">
+              <button type="button" class="btn-range" data-range-days="7" title="Tomorrow + 7 days">7 days</button>
+              <button type="button" class="btn-range" data-range-days="14" title="Tomorrow + 14 days">14 days</button>
+              <button type="button" class="btn-range" data-range-days="30" title="Tomorrow + 30 days">30 days</button>
+            </span>
+            <label for="tgtFilterVendor">Vendor
+              <select id="tgtFilterVendor" class="inline-input"><option value="">All</option></select>
+            </label>
+            <label for="tgtFilterLM">Line Manager
+              <select id="tgtFilterLM" class="inline-input"><option value="">All</option></select>
+            </label>
+            <label for="tgtFilterStatus">Status
+              <select id="tgtFilterStatus" class="inline-input">
+                <option value="">All</option><option value="behind">Behind</option><option value="ok">On / ahead</option>
+              </select>
+            </label>
+            <button type="button" id="tgtFilterClear" class="btn-filter-clear">Clear filters</button>
+            <span class="filter-count hint" id="tgtFilterCount"></span>
+          </div>
+        <section class="panel">
+          <h2>Vendor Target</h2>
+          <p class="hint">Target = what must be done by the To date to be on schedule, measured against actual progress: backlog (planned-to-From minus actual) + Next Planned (further work scheduled up to To that isn't already done). Activities that are ahead of schedule need less or none. Default window: today to 30 days ahead.</p>
+          <div id="vendorTargetWrap"></div>
+        </section>
+        <section class="panel">
+          <h2>Line Manager Target</h2>
+          <div id="lmTargetWrap"></div>
         </section>
       </section>
 
       <section class="tab-panel" data-tab-panel="bottlenecks">
         <section class="panel" id="bottlenecksPanel">
           <h2>Bottlenecks</h2>
-          <p class="hint">An activity is flagged if it is behind planned-to-date by more than 15 points, is holding up the next activity in sequence, or has had zero recorded progress for 3+ weeks since its start date.</p>
+          <p class="hint">An activity is flagged if it is behind planned-to-date by more than 15 percentage, is holding up the next activity in sequence, or has had zero recorded progress for 3+ weeks since its start date.</p>
           <div id="bottlenecksWrap"></div>
         </section>
       </section>
@@ -205,6 +292,7 @@
     </main>
   </div>
 
+  <script src="./live-refresh.js"></script>
   <script src="./dashboard.js"></script>
 </body>
 </html>

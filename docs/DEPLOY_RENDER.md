@@ -18,11 +18,22 @@ The repo already contains everything Render needs:
 | Thing | Value |
 |---|---|
 | App module | `dashboard.main:app` |
-| Build command | `bash render_build.sh` (installs deps + first-deploy auto-seed of Neon) |
+| Build command | `bash render_build.sh` (installs deps; touches the DB only if `ALLOW_DB_BOOTSTRAP=yes`) |
 | Start command | `uvicorn dashboard.main:app --host 0.0.0.0 --port $PORT` |
 | Python version | `3.12.7` (pinned via `PYTHON_VERSION` — local 3.14 is too new for prebuilt wheels) |
 | Health check path | `/` |
 | Secret env var | `DATABASE_URL` (entered in the Render dashboard, never committed) |
+| DB safety lock | `ALLOW_DB_BOOTSTRAP` (`no` by default — build never touches the DB) |
+
+### Render environment variables
+
+| Key | Value | Notes |
+|---|---|---|
+| `DATABASE_URL` | the rotated Neon **pooled** URL from Step 1 | Secret. Required. |
+| `ALLOW_DB_BOOTSTRAP` | `no` | The safety lock. Keep `no` for all normal deploys. Only set `yes` to seed a brand-new empty DB (Step 2). `render.yaml` sets it to `no`; if the service was created before this was added, add it by hand under Environment. |
+| `PYTHON_VERSION` | `3.12.7` | Set by `render.yaml`. |
+
+`PORT` is injected by Render — do not add it.
 
 ---
 
@@ -42,23 +53,32 @@ Keep this somewhere safe. **Do not commit it** to the repo.
 
 ---
 
-## Step 2 — Seed the Neon database
+## Step 2 — Seed the Neon database (only for a NEW, empty database)
 
-The build command is now `bash render_build.sh`, which **auto-seeds Neon on the
-first deploy**: after installing deps it checks the target DB (via `DATABASE_URL`)
-and, only if the `tata_road.road` table is absent/empty, applies `db/00_schema.sql`
-then `db/01_seed.sql`. This is existence-gated — on every later redeploy it sees the
-table already present and seeded and **skips both**, so entered weekly actuals and
-any UI-added road are never dropped or overwritten.
+**The build is locked by default.** `render_build.sh` only touches the database
+when `ALLOW_DB_BOOTSTRAP` is exactly `yes`. With it unset or `no` (the value in
+`render.yaml`) the build installs dependencies and exits — no schema, no seed — so
+a redeploy, or a `DATABASE_URL` pointed at the wrong database, cannot change data.
 
-So for a normal Blueprint deploy you do **not** need to seed by hand — just make
-sure `DATABASE_URL` is set (Step 3) and the first build will populate Neon.
+**Your DB is already seeded? Skip this step** and leave `ALLOW_DB_BOOTSTRAP=no`.
 
-**Caveat (matches the project's no-migrations rule):** the gate is per *table*, not
-per column/constraint/seed-row. If you later change a column, a CHECK, or add a new
-seed row for an already-created table, a redeploy will **not** pick it up — only a
-deliberate hard rebuild will. To force a reseed, drop the `tata_road` schema on Neon
-first (back it up beforehand), then redeploy.
+To bootstrap a brand-new empty Neon database deliberately:
+
+1. In Render → service → Environment, set `ALLOW_DB_BOOTSTRAP` = `yes`.
+2. Deploy. With the lock open, the build applies `db/00_schema.sql` every time.
+   That file is `CREATE … IF NOT EXISTS` only, so it **adds tables/indexes that
+   don't exist yet and never touches an existing table, column or row**. It then
+   loads `db/01_seed.sql` only if `tata_road.road` is empty — a populated DB is
+   never reseeded.
+3. **Set `ALLOW_DB_BOOTSTRAP` back to `no`** and save.
+
+**Use this to roll out a NEW table:** add it to `db/00_schema.sql`, set the lock to
+`yes`, deploy once, set it back to `no`. Existing tables are skipped.
+
+**Caveat (matches the project's no-migrations rule):** a changed column, CHECK, or
+new seed row on an *already-created* table is **not** picked up — only a deliberate
+hard rebuild does. To force a reseed, back up, drop the `tata_road`
+schema on Neon, then redeploy with the lock open.
 
 ### Manual seeding (optional fallback)
 
@@ -85,6 +105,35 @@ After either path, run `DATABASE_URL="…" ./03_validate.sh` to confirm the data
 
 ---
 
+### Database updates in this release (existing DB, no data touched)
+
+This release adds two **new tables** (`road_issue`, `road_issue_shift`) and the
+live-refresh feed (`live_change_marker`, a sequence and triggers). Everything is
+`CREATE … IF NOT EXISTS` / trigger re-creation: no existing table, column or row
+is changed, dropped or re-seeded. Until applied the app still runs, but the
+per-road **Issue** feature errors and live refresh reports `enabled: false`.
+
+Apply once, either way (both files are safe to re-run):
+
+1. **By hand** (recommended): Neon SQL Editor, or
+   `psql "$DATABASE_URL" -f db/00_schema.sql` then
+   `psql "$DATABASE_URL" -f db/05_live_change.sql`.
+2. **Via one deploy**: set `ALLOW_DB_BOOTSTRAP=yes`, deploy, then set it back to
+   `no`. With the lock open the build runs `00_schema.sql` (missing tables only) and
+   `05_live_change.sql`; the seed is skipped because `road` already has rows.
+
+Not needed on Neon: `db/06_alter_activity_unique.sql` (only matters when
+re-seeding with `rebuild.sh`).
+
+**Pre-deploy checklist**
+- Commit and push the changes to the branch Render deploys (`main`); they are
+  currently uncommitted on `develop`.
+- `DATABASE_URL` set; `ALLOW_DB_BOOTSTRAP` = `no` (or `yes` for the one-off above).
+- Take a Neon branch/backup first if you can (cheap insurance, not required by the SQL).
+- After deploy: `/api/db/roads` loads, and `/api/db/live/changes` shows `"enabled": true`.
+
+---
+
 ## Step 3 — Deploy via the Blueprint
 
 1. Push the branch with `render.yaml` to GitHub (`main`).
@@ -92,7 +141,8 @@ After either path, run `DATABASE_URL="…" ./03_validate.sh` to confirm the data
 3. Connect the `sandeeppanda22/TATA_STEEL` repo and pick branch `main`.
 4. Render reads `render.yaml` and shows the `tata-steel-dashboard` web service.
 5. It will prompt for the one secret marked `sync: false` → paste the rotated
-   `DATABASE_URL` from Step 1 into **DATABASE_URL**.
+   `DATABASE_URL` from Step 1 into **DATABASE_URL**. `ALLOW_DB_BOOTSTRAP` comes
+   pre-filled as `no` from `render.yaml` — leave it unless seeding an empty DB.
 6. Click **Apply**. Render installs deps, then starts uvicorn.
 
 First build takes a few minutes. When it goes **Live**, open the service URL
@@ -121,10 +171,9 @@ to a paid instance type if you need it always-on. Change `plan: free` in
 ## Redeploys
 
 Every push to `main` triggers an automatic redeploy (Render watches the branch).
-Each redeploy re-runs `render_build.sh`, but its DB step is existence-gated: once
-`tata_road` exists and is seeded it does nothing, so redeploys are safe and never
-touch entered data. Changed columns/CHECKs/new seed rows on existing tables are
-**not** auto-applied — see the Step 2 caveat for how to force a reseed.
+Each redeploy re-runs `render_build.sh`. While `ALLOW_DB_BOOTSTRAP` is `no` it
+never touches the database, so redeploys cannot alter entered data. Changed
+columns/CHECKs/new seed rows are **not** auto-applied — see the Step 2 caveat.
 
 ---
 
@@ -134,5 +183,5 @@ touch entered data. Changed columns/CHECKs/new seed rows on existing tables are
 |---|---|
 | Build fails compiling psycopg2 | Python version drifted off 3.12 — confirm `PYTHON_VERSION=3.12.7` in the service env. |
 | `unsupported startup parameter: search_path` | Old code — ensure the deployed commit has the `dashboard/db.py` post-connect `SET search_path` fix. |
-| App up but every API call 500s | `DATABASE_URL` wrong/unset, password not rotated, or Neon not seeded (Step 2). |
+| App up but every API call 500s | `DATABASE_URL` wrong/unset, password not rotated, or Neon not seeded (Step 2 — needs `ALLOW_DB_BOOTSTRAP=yes` once on an empty DB). |
 | First request after idle is slow | Free-tier spin-down (see note above). Expected. |
