@@ -1,0 +1,565 @@
+{
+ "bottlenecks": [
+  {
+   "activity": "Excavation",
+   "actual_pct": 25.0,
+   "expected_pct": 49.45,
+   "line_manager": "LM1",
+   "location": "Gate",
+   "reasons": [
+    "behind planned by 24.5% (more than 15%)"
+   ],
+   "road_no": 1
+  },
+  {
+   "activity": "WMM",
+   "actual_pct": 0.0,
+   "expected_pct": 100.0,
+   "line_manager": "LM1",
+   "location": "Gate",
+   "reasons": [
+    "behind planned by 100.0% (more than 15%)",
+    "zero progress for 6 weeks since start"
+   ],
+   "road_no": 1
+  },
+  {
+   "activity": "GSB",
+   "actual_pct": 25.0,
+   "expected_pct": 67.39,
+   "line_manager": "LM1",
+   "location": "Yard",
+   "reasons": [
+    "behind planned by 42.4% (more than 15%)"
+   ],
+   "road_no": 2
+  },
+  {
+   "activity": "Demo",
+   "actual_pct": 0.0,
+   "expected_pct": 100.0,
+   "line_manager": "LM2",
+   "location": "Demo road",
+   "reasons": [
+    "behind planned by 100.0% (more than 15%)",
+    "zero progress for 6 weeks since start"
+   ],
+   "road_no": 3
+  }
+ ],
+ "group_plan_vendor": [
+  {
+   "activities_behind": 1,
+   "actual_pct": 0.0,
+   "backlog_pct": 100.0,
+   "group": "V3",
+   "next_planned_pct": 0.0,
+   "planned_pct": 100.0,
+   "quantity_by_unit": [
+    {
+     "backlog_qty": 0.0,
+     "next_planned_qty": 0.0,
+     "target_qty": 0.0,
+     "unit": "Cum"
+    }
+   ],
+   "road_rows": [
+    {
+     "activities": [
+      {
+       "activity": "Demo",
+       "actual_qty": 0.0,
+       "backlog_pct": 100.0,
+       "backlog_qty": 0.0,
+       "next_planned_qty": 0.0,
+       "no_planned_qty": true,
+       "planned_qty": 0,
+       "target_qty": 0.0,
+       "unit": "Cum"
+      }
+     ],
+     "actual_pct": 0.0,
+     "backlog_pct": 100.0,
+     "location": "Demo road",
+     "next_planned_pct": 0.0,
+     "planned_pct": 100.0,
+     "road_no": 3,
+     "target_cumulative_pct": 100.0,
+     "target_pct": 100.0
+    }
+   ],
+   "roads": 1,
+   "target_cumulative_pct": 100.0,
+   "target_pct": 100.0
+  },
+  {
+   "activities_behind": 2,
+   "actual_pct": 12.5,
+   "backlog_pct": 62.23,
+   "group": "V1",
+   "next_planned_pct": 16.49,
+   "planned_pct": 74.72,
+   "quantity_by_unit": [
+    {
+     "backlog_qty": 744.5,
+     "next_planned_qty": 329.7,
+     "target_qty": 1074.2,
+     "unit": "Cum"
+    }
+   ],
+   "road_rows": [
+    {
+     "activities": [
+      {
+       "activity": "Excavation",
+       "actual_qty": 250.0,
+       "backlog_pct": 24.5,
+       "backlog_qty": 244.5,
+       "next_planned_qty": 329.7,
+       "no_planned_qty": false,
+       "planned_qty": 1000.0,
+       "target_qty": 574.2,
+       "unit": "Cum"
+      },
+      {
+       "activity": "WMM",
+       "actual_qty": 0.0,
+       "backlog_pct": 100.0,
+       "backlog_qty": 500.0,
+       "next_planned_qty": 0.0,
+       "no_planned_qty": false,
+       "planned_qty": 500.0,
+       "target_qty": 500.0,
+       "unit": "Cum"
+      }
+     ],
+     "actual_pct": 12.5,
+     "backlog_pct": 62.23,
+     "location": "Gate",
+     "next_planned_pct": 16.49,
+     "planned_pct": 74.72,
+     "road_no": 1,
+     "target_cumulative_pct": 91.21,
+     "target_pct": 78.71
+    }
+   ],
+   "roads": 1,
+   "target_cumulative_pct": 91.21,
+   "target_pct": 78.71
+  },
+  {
+   "activities_behind": 1,
+   "actual_pct": 70.0,
+   "backlog_pct": 16.96,
+   "group": "V2",
+   "next_planned_pct": 13.04,
+   "planned_pct": 86.96,
+   "quantity_by_unit": [
+    {
+     "backlog_qty": 169.56,
+     "next_planned_qty": 130.44,
+     "target_qty": 300.0,
+     "unit": "Cum"
+    }
+   ],
+   "road_rows": [
+    {
+     "activities": [
+      {
+       "activity": "GSB",
+       "actual_qty": 100.0,
+       "backlog_pct": 42.4,
+       "backlog_qty": 169.56,
+       "next_planned_qty": 130.44,
+       "no_planned_qty": false,
+       "planned_qty": 400.0,
+       "target_qty": 300.0,
+       "unit": "Cum"
+      }
+     ],
+     "actual_pct": 70.0,
+     "backlog_pct": 16.96,
+     "location": "Yard",
+     "next_planned_pct": 13.04,
+     "planned_pct": 86.96,
+     "road_no": 2,
+     "target_cumulative_pct": 100.0,
+     "target_pct": 30.0
+    }
+   ],
+   "roads": 1,
+   "target_cumulative_pct": 100.0,
+   "target_pct": 30.0
+  }
+ ],
+ "group_target": {
+  "from": "2026-11-16",
+  "rows": [
+   {
+    "activities_behind": 1,
+    "actual_pct": 0.0,
+    "backlog_pct": 100.0,
+    "group": "V3",
+    "next_planned_pct": 0.0,
+    "planned_pct": 100.0,
+    "quantity_by_unit": [
+     {
+      "backlog_qty": 0.0,
+      "next_planned_qty": 0.0,
+      "target_qty": 0.0,
+      "unit": "Cum"
+     }
+    ],
+    "road_rows": [
+     {
+      "activities": [
+       {
+        "activity": "Demo",
+        "actual_qty": 0.0,
+        "backlog_pct": 100.0,
+        "backlog_qty": 0.0,
+        "next_planned_qty": 0.0,
+        "no_planned_qty": true,
+        "planned_qty": 0,
+        "target_qty": 0.0,
+        "unit": "Cum"
+       }
+      ],
+      "actual_pct": 0.0,
+      "backlog_pct": 100.0,
+      "location": "Demo road",
+      "next_planned_pct": 0.0,
+      "planned_pct": 100.0,
+      "road_no": 3,
+      "target_cumulative_pct": 100.0,
+      "target_pct": 100.0
+     }
+    ],
+    "roads": 1,
+    "target_cumulative_pct": 100.0,
+    "target_pct": 100.0
+   },
+   {
+    "activities_behind": 2,
+    "actual_pct": 12.5,
+    "backlog_pct": 62.77,
+    "group": "V1",
+    "next_planned_pct": 16.48,
+    "planned_pct": 75.28,
+    "quantity_by_unit": [
+     {
+      "backlog_qty": 755.5,
+      "next_planned_qty": 329.7,
+      "target_qty": 1085.2,
+      "unit": "Cum"
+     }
+    ],
+    "road_rows": [
+     {
+      "activities": [
+       {
+        "activity": "Excavation",
+        "actual_qty": 250.0,
+        "backlog_pct": 25.5,
+        "backlog_qty": 255.5,
+        "next_planned_qty": 329.7,
+        "no_planned_qty": false,
+        "planned_qty": 1000.0,
+        "target_qty": 585.2,
+        "unit": "Cum"
+       },
+       {
+        "activity": "WMM",
+        "actual_qty": 0.0,
+        "backlog_pct": 100.0,
+        "backlog_qty": 500.0,
+        "next_planned_qty": 0.0,
+        "no_planned_qty": false,
+        "planned_qty": 500.0,
+        "target_qty": 500.0,
+        "unit": "Cum"
+       }
+      ],
+      "actual_pct": 12.5,
+      "backlog_pct": 62.77,
+      "location": "Gate",
+      "next_planned_pct": 16.48,
+      "planned_pct": 75.28,
+      "road_no": 1,
+      "target_cumulative_pct": 91.76,
+      "target_pct": 79.26
+     }
+    ],
+    "roads": 1,
+    "target_cumulative_pct": 91.76,
+    "target_pct": 79.26
+   },
+   {
+    "activities_behind": 1,
+    "actual_pct": 70.0,
+    "backlog_pct": 17.83,
+    "group": "V2",
+    "next_planned_pct": 12.17,
+    "planned_pct": 87.83,
+    "quantity_by_unit": [
+     {
+      "backlog_qty": 178.28,
+      "next_planned_qty": 121.72,
+      "target_qty": 300.0,
+      "unit": "Cum"
+     }
+    ],
+    "road_rows": [
+     {
+      "activities": [
+       {
+        "activity": "GSB",
+        "actual_qty": 100.0,
+        "backlog_pct": 44.6,
+        "backlog_qty": 178.28,
+        "next_planned_qty": 121.72,
+        "no_planned_qty": false,
+        "planned_qty": 400.0,
+        "target_qty": 300.0,
+        "unit": "Cum"
+       }
+      ],
+      "actual_pct": 70.0,
+      "backlog_pct": 17.83,
+      "location": "Yard",
+      "next_planned_pct": 12.17,
+      "planned_pct": 87.83,
+      "road_no": 2,
+      "target_cumulative_pct": 100.0,
+      "target_pct": 30.0
+     }
+    ],
+    "roads": 1,
+    "target_cumulative_pct": 100.0,
+    "target_pct": 30.0
+   }
+  ],
+  "to": "2026-12-16"
+ },
+ "road_activity_rows_1": [
+  {
+   "activity": "Excavation",
+   "actual_pct": 25.0,
+   "actual_qty": 250.0,
+   "end_date": "2026-12-31",
+   "major": "Excavation",
+   "planned_pct": 49.5,
+   "planned_qty": 1000.0,
+   "start_date": "2026-10-01",
+   "status": "Behind",
+   "unit": "Cum"
+  },
+  {
+   "activity": "WMM",
+   "actual_pct": 0.0,
+   "actual_qty": 0.0,
+   "end_date": "2026-10-20",
+   "major": "WMM",
+   "planned_pct": 100.0,
+   "planned_qty": 500.0,
+   "start_date": "2026-10-01",
+   "status": "Behind",
+   "unit": "Cum"
+  },
+  {
+   "activity": "RCC Drain",
+   "actual_pct": 50.0,
+   "actual_qty": 60.0,
+   "end_date": "2027-01-30",
+   "major": "",
+   "planned_pct": 0.0,
+   "planned_qty": 120.0,
+   "start_date": "2026-11-20",
+   "status": "On track",
+   "unit": "Rmt"
+  }
+ ],
+ "road_activity_rows_2": [
+  {
+   "activity": "Excavation",
+   "actual_pct": 100,
+   "actual_qty": 900.0,
+   "end_date": "2026-10-31",
+   "major": "Excavation",
+   "planned_pct": 100.0,
+   "planned_qty": 800.0,
+   "start_date": "2026-09-01",
+   "status": "On track",
+   "unit": "Cum"
+  },
+  {
+   "activity": "GSB",
+   "actual_pct": 25.0,
+   "actual_qty": 100.0,
+   "end_date": "2026-11-30",
+   "major": "GSB",
+   "planned_pct": 67.4,
+   "planned_qty": 400.0,
+   "start_date": "2026-10-15",
+   "status": "Behind",
+   "unit": "Cum"
+  },
+  {
+   "activity": "Dismantling",
+   "actual_pct": 0.0,
+   "actual_qty": 0.0,
+   "end_date": null,
+   "major": "",
+   "planned_pct": 0.0,
+   "planned_qty": 0.0,
+   "start_date": null,
+   "status": "On track",
+   "unit": "No"
+  }
+ ],
+ "road_progress_1": [
+  12.5,
+  50.0,
+  0
+ ],
+ "road_progress_2": [
+  70.0,
+  null,
+  1
+ ],
+ "status_counts": {
+  "complete": 1,
+  "in_progress": 2,
+  "not_started": 3
+ },
+ "vendor_performance": [
+  {
+   "activities_behind": 1,
+   "group": "V2",
+   "progress_pct": 70.0,
+   "quantity_by_unit": [
+    {
+     "actual_qty": 1000.0,
+     "planned_qty": 1200.0,
+     "unit": "Cum"
+    },
+    {
+     "actual_qty": 0.0,
+     "planned_qty": 0.0,
+     "unit": "No"
+    }
+   ],
+   "road_rows": [
+    {
+     "activities": [
+      {
+       "activity": "Excavation",
+       "actual_pct": 100,
+       "actual_qty": 900.0,
+       "planned_qty": 800.0,
+       "unit": "Cum"
+      },
+      {
+       "activity": "GSB",
+       "actual_pct": 25.0,
+       "actual_qty": 100.0,
+       "planned_qty": 400.0,
+       "unit": "Cum"
+      },
+      {
+       "activity": "Dismantling",
+       "actual_pct": 0.0,
+       "actual_qty": 0.0,
+       "planned_qty": 0.0,
+       "unit": "No"
+      }
+     ],
+     "location": "Yard",
+     "planned_pct": 86.96,
+     "progress_pct": 70.0,
+     "road_no": 2
+    }
+   ],
+   "roads": 1
+  },
+  {
+   "activities_behind": 2,
+   "group": "V1",
+   "progress_pct": 12.5,
+   "quantity_by_unit": [
+    {
+     "actual_qty": 250.0,
+     "planned_qty": 1500.0,
+     "unit": "Cum"
+    },
+    {
+     "actual_qty": 60.0,
+     "planned_qty": 120.0,
+     "unit": "Rmt"
+    }
+   ],
+   "road_rows": [
+    {
+     "activities": [
+      {
+       "activity": "Excavation",
+       "actual_pct": 25.0,
+       "actual_qty": 250.0,
+       "planned_qty": 1000.0,
+       "unit": "Cum"
+      },
+      {
+       "activity": "WMM",
+       "actual_pct": 0.0,
+       "actual_qty": 0.0,
+       "planned_qty": 500.0,
+       "unit": "Cum"
+      },
+      {
+       "activity": "RCC Drain",
+       "actual_pct": 50.0,
+       "actual_qty": 60.0,
+       "planned_qty": 120.0,
+       "unit": "Rmt"
+      }
+     ],
+     "location": "Gate",
+     "planned_pct": 74.72,
+     "progress_pct": 12.5,
+     "road_no": 1
+    }
+   ],
+   "roads": 1
+  },
+  {
+   "activities_behind": 1,
+   "group": "V3",
+   "progress_pct": 0.0,
+   "quantity_by_unit": [
+    {
+     "actual_qty": 0.0,
+     "planned_qty": 0.0,
+     "unit": "Cum"
+    }
+   ],
+   "road_rows": [
+    {
+     "activities": [
+      {
+       "activity": "Demo",
+       "actual_pct": 0.0,
+       "actual_qty": 0.0,
+       "planned_qty": 0.0,
+       "unit": "Cum"
+      }
+     ],
+     "location": "Demo road",
+     "planned_pct": 100.0,
+     "progress_pct": 0.0,
+     "road_no": 3
+    }
+   ],
+   "roads": 1
+  }
+ ]
+}

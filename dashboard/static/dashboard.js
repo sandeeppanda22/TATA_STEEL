@@ -63,10 +63,63 @@ const weekLabel = iso => {
   return `${fmtDate(mon)} to ${fmtDate(toISO(sun))}`;
 };
 
+// Turns an API error body (plain string, or FastAPI/pydantic's technical list)
+// into short sentences a user can act on, e.g. "Length must be a number".
+const API_FIELD_LABELS = {
+  road_no: 'Road No', phase: 'Phase', scheme_sl_no: 'Scheme No', location: 'Location',
+  line_manager: 'Line Manager', vendor: 'Vendor', road_type: 'Road Type', length_m: 'Length',
+  width_m: 'Width', drain_planned_m: 'Drain Planned', cost_cr: 'Cost', start_date: 'Start Date',
+  end_date: 'End Date', raw_name: 'Activity name', major: 'Major', weight_pct: 'Weight %',
+  unit: 'Unit', planned_qty: 'Planned Qty', actual_qty: 'Actual Qty', week_start_date: 'Week',
+  seq_no: 'Sequence', note: 'Note', remarks: 'Remarks', status: 'Status', issue: 'Issue',
+  from_date: 'From date', to_date: 'To date', reason: 'Reason', csv: 'CSV',
+};
+
+function apiErrorMessages(detail) {
+  if (detail == null || detail === '') return ['Something went wrong. Please try again.'];
+  if (typeof detail === 'string') return [detail];
+  if (!Array.isArray(detail)) return [typeof detail === 'object' && detail.message ? String(detail.message) : JSON.stringify(detail)];
+  const out = detail.map(e => {
+    if (!e || typeof e !== 'object') return String(e);
+    const loc = (e.loc || []).filter(x => x !== 'body');
+    const field = loc[loc.length - 1];
+    const ai = loc.indexOf('activities');
+    const prefix = ai >= 0 && typeof loc[ai + 1] === 'number' ? `Activity ${loc[ai + 1] + 1}: ` : '';
+    let label = API_FIELD_LABELS[field] || String(field == null ? 'Value' : field).replace(/_/g, ' ');
+    label = label.charAt(0).toUpperCase() + label.slice(1);
+    const ctx = e.ctx || {};
+    const numeric = /^(float|int|decimal)_(type|parsing)$/.test(e.type || '');
+    const dated = /^date(_from_datetime)?_(type|parsing)$/.test(e.type || '') || e.type === 'date_type';
+    let msg;
+    if (e.type === 'missing' || ((numeric || dated) && e.input === null)) msg = `${label} is required`;
+    else if (numeric) msg = `${label} must be a number`;
+    else if (e.type === 'int_from_float') msg = `${label} must be a whole number`;
+    else if (dated) msg = `${label} must be a valid date`;
+    else if (e.type === 'string_type') msg = `${label} must be text`;
+    else if (e.type === 'greater_than') msg = `${label} must be greater than ${ctx.gt}`;
+    else if (e.type === 'greater_than_equal') msg = `${label} must be at least ${ctx.ge}`;
+    else if (e.type === 'less_than_equal') msg = `${label} must be at most ${ctx.le}`;
+    else if (e.type === 'less_than') msg = `${label} must be less than ${ctx.lt}`;
+    else if (e.type === 'value_error') msg = String(e.msg || '').replace(/^Value error,\s*/, '');
+    else msg = `${label}: ${e.msg || 'is not valid'}`;
+    return prefix + msg;
+  });
+  return [...new Set(out)];
+}
+
+function apiError(out, res) {
+  const messages = apiErrorMessages(out && out.detail != null ? out.detail : (res ? 'Request failed (HTTP ' + res.status + ')' : null));
+  const err = new Error(messages.join('; '));
+  err.messages = messages;
+  err.status = res ? res.status : undefined;
+  err.body = out;
+  return err;
+}
+
 async function dbGet(path) {
   const res = await fetch(path, { cache: 'no-store' });
-  const out = await res.json();
-  if (!res.ok) throw new Error((out && out.detail) ? JSON.stringify(out.detail) : 'request failed');
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw apiError(out, res);
   return out;
 }
 
@@ -77,12 +130,7 @@ async function dbSend(method, path, body) {
     body: JSON.stringify(body || {}),
   });
   const out = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error((out && out.detail) ? (typeof out.detail === 'string' ? out.detail : JSON.stringify(out.detail)) : ('HTTP ' + res.status));
-    err.status = res.status;
-    err.body = out;
-    throw err;
-  }
+  if (!res.ok) throw apiError(out, res);
   if (window.LIVE_FEED) window.LIVE_FEED.noteLocalWrite();   // our own save: don't banner its echo
   return out;
 }
@@ -99,7 +147,7 @@ function renderKpis(roads) {
     cost_cr: acc.cost_cr + (Number(r.cost_cr) || 0),
   }), { length_m: 0, drain_m: 0, cost_cr: 0 });
   const tiles = [
-    ['Total Roads (Phase 1)', roads.length],
+    ['Total Roads', roads.length],
     ['Total Length (m)', fmt(totals.length_m)],
     ['Total Drain (m)', fmt(totals.drain_m)],
     ['Total Cost (Cr)', Math.round(totals.cost_cr * 100) / 100],
@@ -214,7 +262,7 @@ function csProgressBars(data) {
     const delta = now - actualBy.get(weeks[prevIdx]);
     const sign = delta > 0 ? '+' : '';
     const cls = delta > 0 ? 'move-up' : (delta < 0 ? 'move-down' : '');
-    return `<span class="movement-stat ${cls}"><b>${label}</b> ${sign}${delta.toFixed(1)} pts</span>`;
+    return `<span class="movement-stat ${cls}"><b>${label}</b> ${sign}${delta.toFixed(1)}%</span>`;
   };
   const latestActual = lastIdx >= 0 ? actualBy.get(weeks[lastIdx]) : null;
   const latestPlanned = lastIdx >= 0 ? (plannedBy.get(weeks[lastIdx]) ?? null) : null;
@@ -818,7 +866,7 @@ const ROAD_EDIT_FIELDS = [
   ['location', 'text'], ['vendor', 'text'], ['line_manager', 'text'],
   ['road_type', 'text'], ['length_m', 'number'], ['width_m', 'number'],
   ['drain_planned_m', 'number'], ['cost_cr', 'number'],
-  ['start_date', 'date'], ['end_date', 'date'],
+  ['start_date', 'date'], ['end_date', 'date'], ['phase', 'number'],
 ];
 const ACTIVITY_EDIT_FIELDS = [
   ['raw_name', 'text'], ['major', 'select'], ['weight_pct', 'number'],
@@ -826,6 +874,15 @@ const ACTIVITY_EDIT_FIELDS = [
   ['start_date', 'date'], ['end_date', 'date'],
 ];
 const VALID_MAJORS = ['', 'Excavation', 'GSB', 'WMM', 'DLC', 'Road'];
+
+// Weight % belongs to the five majors only. With no Major chosen the weight is locked at 0
+// (and unlocked again as soon as a Major is picked). Used by Add Road and Edit Activity.
+function syncWeightToMajor(majorEl, weightEl) {
+  const none = !majorEl.value;
+  if (none) weightEl.value = '0';
+  weightEl.disabled = none;
+  weightEl.title = none ? 'Weight % applies only to activities with a Major - choose a Major first' : '';
+}
 
 function fieldInput(name, type, value) {
   if (type === 'select') {
@@ -836,20 +893,45 @@ function fieldInput(name, type, value) {
   return `<input data-field="${name}" type="${type}" value="${v}">`;
 }
 
+// Readable labels for the Edit Road / Edit Activity forms (not raw column names).
+const EDIT_FIELD_LABELS = {
+  location: 'Location', vendor: 'Vendor', line_manager: 'Line Manager', road_type: 'Road Type',
+  length_m: 'Length (m)', width_m: 'Width (m)', drain_planned_m: 'Drain Planned (m)', cost_cr: 'Cost (Cr)',
+  start_date: 'Start Date', end_date: 'End Date', phase: 'Phase',
+  raw_name: 'Activity name', major: 'Major', weight_pct: 'Weight %', unit: 'Unit', planned_qty: 'Planned Qty',
+};
+
 function editFormRows(fields, obj) {
-  return fields.map(([name, type]) => `
+  return fields.map(([name, type]) => {
+    const combo = !!ROAD_COMBOS[name];     // line manager / vendor / road type / phase: dropdown + "add new"
+    return `
     <div class="form-row">
-      <label>${name}</label>
-      ${fieldInput(name, type, obj[name])}
-    </div>`).join('');
+      <label>${esc(EDIT_FIELD_LABELS[name] || name.replace(/_/g, ' '))}</label>
+      ${combo ? comboFieldHtml(name, obj[name] == null ? '' : obj[name]) : fieldInput(name, type, obj[name])}
+      ${combo ? `<span class="field-msg" data-msg-for="${name}"></span>` : ''}
+    </div>`;
+  }).join('');
 }
 
-async function submitEdit(kind, id, fields, formEl, confirmOverride) {
+async function submitEdit(kind, id, fields, formEl) {
+  // dropdown + "add new" fields must be valid before anything is sent
+  const badCombos = fields.map(([n]) => n).filter(n => {
+    if (!ROAD_COMBOS[n]) return false;
+    if (n === 'phase' && formEl.querySelector('[data-field="phase"]').value === '') {
+      fieldMsg(formEl, 'phase', 'Select a phase, or add a new one.', 'error');
+      formEl.querySelector('[data-field="phase"]').classList.add('field-error');
+      return true;
+    }
+    return !comboCheck(formEl, n, true, false);
+  });
+  if (badCombos.length) {
+    setLiveStatus('Please fix the highlighted fields before saving.', true);
+    return false;
+  }
   const payload = {};
-  if (confirmOverride) payload.confirm_source_override = true;
   fields.forEach(([name, type]) => {
     const input = formEl.querySelector(`[data-field="${name}"]`);
-    let val = input.value;
+    let val = ROAD_COMBOS[name] ? comboValue(formEl, name) : input.value;
     if (val === '') { payload[name] = null; return; }
     payload[name] = (type === 'number') ? Number(val) : val;
   });
@@ -860,14 +942,6 @@ async function submitEdit(kind, id, fields, formEl, confirmOverride) {
     await refreshLiveRoads();
     return true;
   } catch (err) {
-    if (err.status === 409 && !confirmOverride) {
-      const ok = await uiConfirm(
-        'This field comes from the source sheet. Saving will permanently log a ' +
-        'source-override on this edit.\n\n' + err.message + '\n\nSave anyway?', { okLabel: 'Save anyway' });
-      if (ok) return submitEdit(kind, id, fields, formEl, true);
-      setLiveStatus('Edit cancelled (source-override declined).', true);
-      return false;
-    }
     setLiveStatus('Save failed: ' + err.message, true);
     return false;
   }
@@ -888,23 +962,138 @@ const ADD_ROAD_FIELDS = [
   ['drain_planned_m', 'number', 'Drain Planned (m)'], ['cost_cr', 'number', 'Cost (Cr)'],
   ['start_date', 'date', 'Start Date'], ['end_date', 'date', 'End Date'],
 ];
+const ADD_ROAD_REQUIRED = new Set(['road_no', 'phase', 'location']);
+const ROAD_COMBOS = { line_manager: 'line manager', vendor: 'vendor', road_type: 'road type', phase: 'phase' };   // dropdown + "add new"
+const NEW_OPTION = '__new__';
 let ADD_ROAD_ROW_SEQ = 1;
 
+const nextFreeRoadNo = () => (LIVE_ROADS || []).reduce((m, r) => Math.max(m, Number(r.road_no) || 0), 0) + 1;
+
+// Distinct existing values for a road field (line manager / vendor), sorted.
+// Phases already in use, numerically sorted as strings ("2" before "10").
+const existingPhases = () => [...new Set((LIVE_ROADS || []).map(phaseOf))].sort((x, y) => x - y).map(String);
+const nextPhaseNo = () => String((LIVE_ROADS || []).reduce((m, r) => Math.max(m, phaseOf(r)), 0) + 1);
+
+function existingRoadValues(field) {
+  if (field === 'phase') return existingPhases();
+  return [...new Set((LIVE_ROADS || []).map(r => String(r[field] || '').trim()).filter(Boolean))]
+    .sort((x, y) => x.localeCompare(y));
+}
+
+/* ---- dropdown + "add new" fields (Add Road AND Edit Road share these) ------
+   comboFieldHtml  builds the <select> and its hidden "new value" box
+   fieldMsg        shows a message under a field / marks the right box red
+   comboCheck      validates the new-value box (duplicates, phase number)
+   comboValue      the value to send: the chosen option, or the typed new one
+   `root` is the form container, so any number of forms can use them. */
+function comboFieldHtml(name, current, id) {
+  const label = ROAD_COMBOS[name], isPhase = name === 'phase';
+  const vals = existingRoadValues(name);
+  const cur = current == null ? undefined : String(current);
+  // editing: keep the road's own value selected; adding: always start blank (never auto-select,
+  // even when only one value exists - the user chooses on purpose)
+  const picked = v => cur !== undefined && v === cur;
+  return `
+    <select${id ? ` id="${id}"` : ''} data-field="${name}" data-combo="1">
+      <option value="">Select ${esc(label)}...</option>
+      ${vals.map(v => `<option value="${esc(v)}"${picked(v) ? ' selected' : ''}>${isPhase ? 'Phase ' : ''}${esc(v)}</option>`).join('')}
+      <option value="${NEW_OPTION}">+ Add new ${esc(label)}...</option>
+    </select>
+    <div class="combo-new" data-new-wrap-for="${name}" hidden>
+      <span class="combo-new-tag">New ${esc(label)}</span>
+      ${isPhase
+        ? '<input type="number" min="1" step="1" data-new-for="phase" placeholder="Phase number" autocomplete="off">'
+        : `<input type="text" data-new-for="${name}" placeholder="Type the ${esc(label)} name" autocomplete="off">`}
+    </div>`;
+}
+
+function fieldMsg(root, name, text, kind) {
+  const el = root.querySelector(`[data-msg-for="${name}"]`);
+  // for a dropdown + "add new" field the thing to flag is the new-value box, not the dropdown
+  const input = ROAD_COMBOS[name]
+    ? root.querySelector(`[data-new-for="${name}"]`) : root.querySelector(`[data-field="${name}"]`);
+  if (el) { el.textContent = text || ''; el.className = 'field-msg' + (text ? ' ' + (kind || 'error') : ''); }
+  if (input) input.classList.toggle('field-error', kind === 'error' && !!text);
+}
+
+// `strict` = the user pressed Save: an empty new-value box is then an error; while they are
+// still choosing it is just a prompt. `prefill` suggests the next phase number.
+function comboCheck(root, field, strict, prefill) {
+  const sel = root.querySelector(`[data-field="${field}"]`);
+  const inp = root.querySelector(`[data-new-for="${field}"]`);
+  const box = root.querySelector(`[data-new-wrap-for="${field}"]`);
+  if (!sel || !inp || !box) return true;
+  const isNew = sel.value === NEW_OPTION;
+  box.hidden = !isNew;
+  if (!isNew) { inp.value = ''; fieldMsg(root, field, '', null); return true; }
+  const isPhase = field === 'phase';
+  if (isPhase && prefill && inp.value === '') inp.value = nextPhaseNo();
+  const name = inp.value.trim();
+  if (!name) {
+    fieldMsg(root, field, isPhase ? 'Enter the new phase number.' : `Enter the new ${ROAD_COMBOS[field]} name.`, strict ? 'error' : 'hint');
+    return false;
+  }
+  if (isPhase) {
+    const n = Number(name);
+    if (!Number.isInteger(n) || n < 1) { fieldMsg(root, field, 'Phase must be a whole number, 1 or higher.', 'error'); return false; }
+    if (existingPhases().includes(String(n))) { fieldMsg(root, field, `Phase ${n} already exists - choose it from the list.`, 'error'); return false; }
+    fieldMsg(root, field, `Phase ${n} will be created as a new group.`, 'ok');
+    return true;
+  }
+  const dup = existingRoadValues(field).find(v => v.toLowerCase() === name.toLowerCase());
+  if (dup) { fieldMsg(root, field, `"${dup}" already exists - choose it from the list.`, 'error'); return false; }
+  fieldMsg(root, field, `New ${ROAD_COMBOS[field]} "${name}" will be added.`, 'ok');
+  return true;
+}
+
+function comboValue(root, name) {
+  const sel = root.querySelector(`[data-field="${name}"]`);
+  if (sel.value !== NEW_OPTION) return sel.value;
+  return root.querySelector(`[data-new-for="${name}"]`).value.trim();
+}
+
+// Wire the dropdown behaviour on any form that contains combo fields (once per form).
+function wireComboForm(root) {
+  if (root.dataset.comboBound) return;
+  root.dataset.comboBound = '1';
+  root.addEventListener('change', ev => {
+    const t = ev.target;
+    if (!t.matches('select[data-combo]')) return;
+    comboCheck(root, t.dataset.field, false, true);
+    if (t.value === NEW_OPTION) root.querySelector(`[data-new-for="${t.dataset.field}"]`).focus();
+  });
+  root.addEventListener('input', ev => {
+    if (ev.target.dataset.newFor) comboCheck(root, ev.target.dataset.newFor, false, false);
+  });
+}
+
 function addRoadFieldRows() {
-  return ADD_ROAD_FIELDS.map(([name, type, label]) => `
+  return ADD_ROAD_FIELDS.map(([name, type, label]) => {
+    const req = ADD_ROAD_REQUIRED.has(name) ? ' <span class="req" title="Required">*</span>' : '';
+    let control;
+    if (ROAD_COMBOS[name]) {
+      control = comboFieldHtml(name, undefined, `addRoad_${name}`);
+    } else {
+      const pre = name === 'road_no' ? ` value="${nextFreeRoadNo()}" min="1" step="1"`
+        : (type === 'number' ? ' min="0" step="any"' : '');
+      control = `<input id="addRoad_${name}" data-field="${name}" type="${type}"${pre}>`;
+    }
+    return `
     <div class="form-row">
-      <label for="addRoad_${name}">${esc(label)}</label>
-      <input id="addRoad_${name}" data-field="${name}" type="${type}">
-    </div>`).join('');
+      <label for="addRoad_${name}">${esc(label)}${req}</label>
+      ${control}
+      <span class="field-msg" data-msg-for="${name}"></span>
+    </div>`;
+  }).join('');
 }
 
 function addRoadActivityRowHtml(idx) {
   return `<tr data-activity-row="${idx}">
-    <td><input data-aname type="text" placeholder="Activity name"></td>
+    <td><input data-aname type="text" placeholder="Activity name (required)"></td>
     <td><select data-amajor>${VALID_MAJORS.map(m => `<option value="${m}">${m || '(none)'}</option>`).join('')}</select></td>
-    <td><input data-aweight type="number" step="0.01" value="0" style="width:70px;"></td>
+    <td><input data-aweight type="number" step="0.01" min="0" max="100" value="0" style="width:70px;" disabled title="Weight % applies only to activities with a Major - choose a Major first"></td>
     <td><input data-aunit type="text" style="width:70px;"></td>
-    <td><input data-aqty type="number" step="0.001" value="0" style="width:90px;"></td>
+    <td><input data-aqty type="number" step="any" min="0" placeholder="Required" style="width:100px;"></td>
     <td><input data-astart type="date"></td>
     <td><input data-aend type="date"></td>
     <td><button type="button" class="btn-small btn-danger" data-remove-activity-row="${idx}">Remove</button></td>
@@ -925,11 +1114,11 @@ function renderAddRoadForm() {
   if (!wrap) return;
   wrap.innerHTML = `
     <h3>Add New Road</h3>
-    <p class="hint">Fill in the road's basic details and at least one activity, each with its own start and end date, so weekly progress has something to track against. Activity weights must total 100.</p>
-    <div class="edit-form">${addRoadFieldRows()}</div>
+    <p class="hint">Fields marked <span class="req">*</span> are required. Add at least one activity with a name and planned quantity; each activity can have its own start and end date. Activity weights must total 100.</p>
+    <div class="edit-form form-grid">${addRoadFieldRows()}</div>
     <div class="table-scroll">
     <table class="data-table" id="addRoadActivityTable">
-      <thead><tr><th>Activity</th><th>Major</th><th>Weight %</th><th>Unit</th><th>Planned Qty</th><th>Start</th><th>End</th><th></th></tr></thead>
+      <thead><tr><th>Activity <span class="req">*</span></th><th>Major</th><th>Weight %</th><th>Unit</th><th>Planned Qty <span class="req">*</span></th><th>Start</th><th>End</th><th></th></tr></thead>
       <tbody id="addRoadActivityBody">${addRoadActivityRowHtml(0)}</tbody>
     </table>
     </div>
@@ -945,7 +1134,34 @@ function renderAddRoadForm() {
   ADD_ROAD_ROW_SEQ = 1;
   updateAddRoadWeightHint();
   wireAddRoadForm();
+  checkRoadNo();              // validate the pre-filled number straight away
 }
+
+/* ---- live field messages ------------------------------------------------ */
+const addRoadEl = name => document.querySelector(`#addRoadFormWrap [data-field="${name}"]`);
+
+const addRoadRoot = () => document.getElementById('addRoadFormWrap');
+const setFieldMsg = (name, text, kind) => fieldMsg(addRoadRoot(), name, text, kind);
+
+// Live road-number check against the roads already loaded (kept fresh by the
+// live feed); the server still has the final say (409) if two people race.
+function checkRoadNo() {
+  const input = addRoadEl('road_no');
+  if (!input) return true;
+  const raw = input.value.trim();
+  if (raw === '') { setFieldMsg('road_no', 'Road number is required.', 'error'); return false; }
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) { setFieldMsg('road_no', 'Use a whole number, 1 or higher.', 'error'); return false; }
+  const clash = (LIVE_ROADS || []).find(r => Number(r.road_no) === n);
+  if (clash) {
+    setFieldMsg('road_no', `Road ${n} already exists (${clash.location}). Next free number: ${nextFreeRoadNo()}.`, 'error');
+    return false;
+  }
+  setFieldMsg('road_no', `Road ${n} is available.`, 'ok');
+  return true;
+}
+
+const checkComboNew = (field, strict, prefill) => comboCheck(addRoadRoot(), field, strict, prefill);
 
 function wireAddRoadForm() {
   const wrap = document.getElementById('addRoadFormWrap');
@@ -965,55 +1181,141 @@ function wireAddRoadForm() {
     }
   });
   wrap.addEventListener('input', (ev) => {
-    if (ev.target.matches('[data-aweight]')) updateAddRoadWeightHint();
+    const t = ev.target;
+    if (t.matches('[data-aweight]')) updateAddRoadWeightHint();
+    if (t.matches('[data-field="road_no"]')) checkRoadNo();
+    if (t.classList.contains('field-error') && t.value !== '') t.classList.remove('field-error');
+  });
+  wireComboForm(wrap);
+  wrap.addEventListener('change', (ev) => {
+    if (ev.target.matches('[data-amajor]')) {
+      const row = ev.target.closest('tr');
+      syncWeightToMajor(ev.target, row.querySelector('[data-aweight]'));
+      updateAddRoadWeightHint();
+    }
   });
   wrap.dataset.bound = '1';
 }
 
-function collectAddRoadPayload() {
+/* ---- collect + validate -------------------------------------------------- */
+// A row the user hasn't touched (no name, qty, unit or dates) is ignored; any
+// row with something typed in it must be complete.
+function addRoadRows() {
+  return [...document.querySelectorAll('#addRoadActivityBody tr')].map(row => {
+    const v = sel => row.querySelector(sel).value.trim();
+    return {
+      row,
+      raw_name: v('[data-aname]'),
+      major: row.querySelector('[data-amajor]').value || null,
+      weight_raw: v('[data-aweight]'),
+      unit: v('[data-aunit]') || null,
+      qty_raw: v('[data-aqty]'),
+      start_date: v('[data-astart]') || null,
+      end_date: v('[data-aend]') || null,
+    };
+  });
+}
+const rowIsBlank = a => !a.raw_name && !a.qty_raw && !a.unit && !a.start_date && !a.end_date
+  && (a.weight_raw === '' || Number(a.weight_raw) === 0);
+
+function validateAddRoad() {
+  const errors = [];           // { el, msg }
   const wrap = document.getElementById('addRoadFormWrap');
+  wrap.querySelectorAll('.field-error').forEach(e => e.classList.remove('field-error'));
+  const fail = (el, msg, field) => { errors.push({ el, msg }); if (el) el.classList.add('field-error'); if (field) setFieldMsg(field, msg, 'error'); };
+
+  if (!checkRoadNo()) fail(addRoadEl('road_no'), document.querySelector('[data-msg-for="road_no"]').textContent);
+
+  const loc = addRoadEl('location');
+  if (!loc.value.trim()) fail(loc, 'Location is required.', 'location'); else setFieldMsg('location', '', null);
+
+  ['length_m', 'width_m', 'drain_planned_m', 'cost_cr'].forEach(f => {
+    const el = addRoadEl(f);
+    if (el.value !== '' && (!Number.isFinite(Number(el.value)) || Number(el.value) < 0)) {
+      fail(el, `${API_FIELD_LABELS[f]} must be a number, 0 or more.`, f);
+    } else setFieldMsg(f, '', null);
+  });
+
+  Object.keys(ROAD_COMBOS).forEach(f => {
+    if (!checkComboNew(f, true)) fail(document.querySelector(`#addRoadFormWrap [data-new-for="${f}"]`),
+      document.querySelector(`[data-msg-for="${f}"]`).textContent);
+  });
+
+  const phaseSel = addRoadEl('phase');
+  if (phaseSel.value === '') fail(phaseSel, 'Select a phase, or add a new one.', 'phase');
+
+  const s = addRoadEl('start_date'), e = addRoadEl('end_date');
+  if (s.value && e.value && e.value < s.value) fail(e, 'End date cannot be before the start date.', 'end_date'); else setFieldMsg('end_date', '', null);
+
+  const rows = addRoadRows().filter(a => !rowIsBlank(a));
+  if (!rows.length) {
+    fail(wrap.querySelector('[data-aname]'), 'Add at least one activity with a name and planned quantity.');
+  }
+  const seen = new Set();
+  let weightTotal = 0;
+  rows.forEach((a, i) => {
+    const tag = `Activity ${i + 1}`;
+    const q = a.row.querySelector('[data-aqty]'), n = a.row.querySelector('[data-aname]');
+    if (!a.raw_name) fail(n, `${tag}: activity name is required.`);
+    else if (seen.has(a.raw_name.toLowerCase())) fail(n, `${tag}: "${a.raw_name}" is entered twice.`);
+    else seen.add(a.raw_name.toLowerCase());
+    if (a.qty_raw === '' || !Number.isFinite(Number(a.qty_raw)) || Number(a.qty_raw) <= 0) {
+      fail(q, `${tag}${a.raw_name ? ` (${a.raw_name})` : ''}: planned quantity is required and must be more than 0.`);
+    }
+    const w = Number(a.weight_raw || 0);
+    if (!Number.isFinite(w) || w < 0 || w > 100) fail(a.row.querySelector('[data-aweight]'), `${tag}: weight must be between 0 and 100.`);
+    else weightTotal += w;
+    if (a.start_date && a.end_date && a.end_date < a.start_date) fail(a.row.querySelector('[data-aend]'), `${tag}: end date is before its start date.`);
+  });
+  if (rows.length && Math.abs(weightTotal - 100) > 0.01) {
+    fail(wrap.querySelector('[data-aweight]'), `Activity weights must total 100 (now ${weightTotal.toFixed(2)}).`);
+  }
+  return errors;
+}
+
+function collectAddRoadPayload() {
   const payload = {};
   ADD_ROAD_FIELDS.forEach(([name, type]) => {
-    const input = wrap.querySelector(`[data-field="${name}"]`);
-    const val = input ? input.value : '';
-    if (val === '') { payload[name] = null; return; }
+    const input = addRoadEl(name);
+    let val = input ? input.value : '';
+    if (ROAD_COMBOS[name]) val = comboValue(addRoadRoot(), name);
+    if (val === '') { payload[name] = (name === 'length_m' || name === 'drain_planned_m') ? 0 : null; return; }
     payload[name] = (type === 'number') ? Number(val) : val;
   });
-  payload.activities = [...document.querySelectorAll('#addRoadActivityBody tr')].map(row => ({
-    raw_name: row.querySelector('[data-aname]').value.trim(),
-    major: row.querySelector('[data-amajor]').value || null,
-    weight_pct: Number(row.querySelector('[data-aweight]').value || 0),
-    unit: row.querySelector('[data-aunit]').value || null,
-    planned_qty: Number(row.querySelector('[data-aqty]').value || 0),
-    start_date: row.querySelector('[data-astart]').value || null,
-    end_date: row.querySelector('[data-aend]').value || null,
-  })).filter(a => a.raw_name);
+  payload.activities = addRoadRows().filter(a => !rowIsBlank(a)).map(a => ({
+    raw_name: a.raw_name, major: a.major, weight_pct: Number(a.weight_raw || 0), unit: a.unit,
+    planned_qty: Number(a.qty_raw), start_date: a.start_date, end_date: a.end_date,
+  }));
   return payload;
+}
+
+function showAddRoadErrors(messages) {
+  const statusEl = document.getElementById('addRoadStatus');
+  statusEl.style.color = 'var(--accent)';
+  statusEl.innerHTML = `<b>Please fix the following:</b><ul class="form-errors">${messages.map(m => `<li>${esc(m)}</li>`).join('')}</ul>`;
 }
 
 async function submitAddRoad() {
   const statusEl = document.getElementById('addRoadStatus');
+  const errors = validateAddRoad();
+  if (errors.length) {
+    showAddRoadErrors(errors.map(x => x.msg));
+    const first = errors.find(x => x.el);
+    if (first) { first.el.scrollIntoView({ block: 'center', behavior: 'smooth' }); first.el.focus({ preventScroll: true }); }
+    return;
+  }
   const payload = collectAddRoadPayload();
-  if (!payload.road_no || !payload.location) {
-    statusEl.textContent = 'Road number and location are required.';
-    statusEl.style.color = 'var(--accent)';
-    return;
-  }
-  if (!payload.activities.length) {
-    statusEl.textContent = 'Add at least one activity (with a name).';
-    statusEl.style.color = 'var(--accent)';
-    return;
-  }
   statusEl.textContent = 'Saving...';
   statusEl.style.color = '';
   try {
     await dbSend('POST', '/api/db/roads', payload);
     toggleAddRoadForm(false);
     setLiveStatus(`Road ${payload.road_no} added.`, false, { global: true });
+    uiToast(`Road ${payload.road_no} added.`, 'ok');
     await refreshLiveRoads();
   } catch (err) {
-    statusEl.textContent = 'Could not save: ' + err.message;
-    statusEl.style.color = 'var(--accent)';
+    showAddRoadErrors(err.messages || [err.message]);
+    if (err.status === 409) checkRoadNo();
   }
 }
 
@@ -1569,10 +1871,19 @@ async function ensureRoadActivities(roadNo) {
 
 function buildEditForm(formEl, kind, id, fields, sourceObj) {
   formEl.innerHTML = editFormRows(fields, sourceObj) +
-    `<div class="form-row"><button type="button" class="btn-small btn-save">Save</button>
+    `<div class="form-row form-actions"><button type="button" class="btn-small btn-save">Save</button>
      <button type="button" class="btn-small btn-cancel">Cancel</button></div>`;
+  formEl.classList.toggle('form-grid', kind === 'road');     // road form: same even grid as Add Road
+  if (kind === 'activity') {                                  // weight only exists for a Major
+    const maj = formEl.querySelector('[data-field="major"]'), wt = formEl.querySelector('[data-field="weight_pct"]');
+    if (maj && wt) {
+      syncWeightToMajor(maj, wt);
+      maj.addEventListener('change', () => syncWeightToMajor(maj, wt));
+    }
+  }
+  wireComboForm(formEl);
   formEl.hidden = false;
-  formEl.querySelector('.btn-save').addEventListener('click', () => submitEdit(kind, id, fields, formEl, false));
+  formEl.querySelector('.btn-save').addEventListener('click', () => submitEdit(kind, id, fields, formEl));
   formEl.querySelector('.btn-cancel').addEventListener('click', () => { formEl.hidden = true; formEl.innerHTML = ''; });
 }
 
@@ -1765,6 +2076,47 @@ function wireRoadFilters() {
   bar.dataset.bound = '1';
 }
 
+/* ---------------------------------------------------------------------
+   Phase groups. Roads are grouped by their `phase` value; every distinct
+   phase found in the data gets its own collapsible section (a phase added
+   later - Add Road with a new phase number, or editing a road's phase -
+   appears automatically, nothing here is hard-coded to Phase 1). Collapsed
+   phases are remembered across reloads/refreshes.
+   --------------------------------------------------------------------- */
+const PHASE_KEY = 'tata_phase_collapsed';
+const PHASE_COLLAPSED = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem(PHASE_KEY) || '[]').map(String)); }
+  catch (e) { return new Set(); }
+})();
+function savePhaseState() {
+  try { localStorage.setItem(PHASE_KEY, JSON.stringify([...PHASE_COLLAPSED])); } catch (e) { /* storage unavailable */ }
+}
+const phaseOf = r => (r.phase == null || r.phase === '' ? 1 : Number(r.phase));
+
+function phaseSection(phase, roads) {
+  const collapsed = PHASE_COLLAPSED.has(String(phase));
+  const len = roads.reduce((s, r) => s + (Number(r.length_m) || 0), 0);
+  const pct = len ? roads.reduce((s, r) => s + (Number(r.progress_pct) || 0) * (Number(r.length_m) || 0), 0) / len : null;
+  return `
+    <section class="phase-group" data-phase="${phase}">
+      <button type="button" class="phase-head${collapsed ? '' : ' open'}" data-phase-toggle="${phase}" aria-expanded="${!collapsed}">
+        <span class="phase-title">Phase ${phase}</span>
+        <span class="phase-meta">${roads.length} road${roads.length === 1 ? '' : 's'}${pct == null ? '' : ` &middot; ${Math.round(pct * 10) / 10}% complete`}</span>
+      </button>
+      <div class="phase-body"${collapsed ? ' hidden' : ''}>
+        <div class="table-scroll">
+        <table class="data-table live-roads-table">
+          <thead><tr>
+            <th>Road</th><th>Location</th><th>Vendor</th><th>Line Manager</th><th>Type</th>
+            <th>Start Date</th><th>End Date</th>
+            <th>% Complete</th><th>Drain %</th><th></th>
+          </tr></thead>${roads.map(liveRoadBlock).join('')}
+        </table>
+        </div>
+      </div>
+    </section>`;
+}
+
 function renderLiveRoadsTable() {
   wireRoadFilters();
   const shown = filteredLiveRoads();
@@ -1774,17 +2126,31 @@ function renderLiveRoadsTable() {
       ? `Showing all ${LIVE_ROADS.length} roads`
       : `Showing ${shown.length} of ${LIVE_ROADS.length} roads`;
   }
-  const rows = shown.map(liveRoadBlock).join('');
-  document.getElementById('liveRoadsWrap').innerHTML = shown.length ? `
-    <div class="table-scroll">
-    <table class="data-table" id="liveRoadsTable">
-      <thead><tr>
-        <th>Road</th><th>Location</th><th>Vendor</th><th>Line Manager</th><th>Type</th>
-        <th>Start Date</th><th>End Date</th>
-        <th>% Complete</th><th>Drain %</th><th></th>
-      </tr></thead>${rows}
-    </table>
-    </div>` : '<p class="hint">No roads match the filters selected above.</p>';
+  // A road that is open (e.g. jumped to from Weight Audit) must not hide inside a collapsed phase.
+  if (EXPANDED_ROAD != null) {
+    const open = LIVE_ROADS.find(r => r.road_no === EXPANDED_ROAD);
+    if (open) PHASE_COLLAPSED.delete(String(phaseOf(open)));
+  }
+  const byPhase = new Map();
+  shown.forEach(r => {
+    const p = phaseOf(r);
+    if (!byPhase.has(p)) byPhase.set(p, []);
+    byPhase.get(p).push(r);
+  });
+  const phases = [...byPhase.keys()].sort((x, y) => x - y);
+  document.getElementById('liveRoadsWrap').innerHTML = shown.length
+    ? phases.map(p => phaseSection(p, byPhase.get(p))).join('')
+    : '<p class="hint">No roads match the filters selected above.</p>';
+  document.querySelectorAll('[data-phase-toggle]').forEach(btn => btn.addEventListener('click', () => {
+    const key = btn.dataset.phaseToggle;
+    const body = btn.nextElementSibling;
+    const nowHidden = !body.hidden;
+    body.hidden = nowHidden;
+    btn.classList.toggle('open', !nowHidden);
+    btn.setAttribute('aria-expanded', String(!nowHidden));
+    if (nowHidden) PHASE_COLLAPSED.add(key); else PHASE_COLLAPSED.delete(key);
+    savePhaseState();
+  }));
   wireLiveRoadsEvents();
   reapplyRoadStatus();
 }
@@ -1845,7 +2211,7 @@ function renderOverall(overview, roads, status) {
     <div class="overall-headline">
       <div class="overall-figure">
         <div class="overall-pct">${pct1(actualOverall)}</div>
-        <div class="hint">of the whole Phase 1 programme complete (length-weighted), against ${pct1(plannedOverall)} planned to date</div>
+        <div class="hint">of the whole programme complete (length-weighted), against ${pct1(plannedOverall)} planned to date</div>
         ${bar(actualOverall, plannedOverall)}
       </div>
     </div>
@@ -1935,19 +2301,16 @@ async function renderWeightAudit() {
 
 async function renderEditLog() {
   const wrap = document.getElementById('editLogWrap');
-  const overrideOnly = document.getElementById('overrideOnlyChk').checked;
   try {
-    const q = overrideOnly ? '?source_override_only=true' : '';
-    const rows = await dbGet('/api/db/edit-log' + q);
+    const rows = await dbGet('/api/db/edit-log');
     if (!rows.length) { wrap.innerHTML = '<p>No edits logged yet.</p>'; return; }
     wrap.innerHTML = `
       <table class="data-table">
-        <thead><tr><th>When</th><th>Table</th><th>Row</th><th>Field</th><th>Old</th><th>New</th><th>Override</th></tr></thead>
+        <thead><tr><th>When</th><th>Table</th><th>Row</th><th>Field</th><th>Old</th><th>New</th></tr></thead>
         <tbody>${rows.map(r => `
-          <tr class="${r.source_override ? 'issue-row' : ''}">
+          <tr>
             <td>${fmtDateTime(r.edited_at)}</td><td>${esc(r.table_name)}</td><td>${esc(r.row_pk)}</td>
             <td>${esc(r.field)}</td><td class="wrap">${esc(r.old_value)}</td><td class="wrap">${esc(r.new_value)}</td>
-            <td>${r.source_override ? 'yes' : 'no'}</td>
           </tr>`).join('')}</tbody>
       </table>`;
   } catch (err) {
@@ -2109,54 +2472,96 @@ function wireSelectableRows(wrap) {
   });
 }
 
-// Planned vs actual quantity per unit (units aren't additive, so one line each).
-function perfQty(list, key) {
+/* =====================================================================
+   Shared building blocks for the Performance / Backlog / Targets tables.
+   A table is described once as a list of column definitions
+   ({ head, cell: row => html, cls? }) and rendered by expandableTable();
+   the same definitions also drive the one-row summary on the group print.
+   ===================================================================== */
+
+// Quantity per unit (units aren't additive, so one line each).
+function qtyByUnit(list, key) {
   const parts = (list || []).filter(q => q[key] > 0).map(q => `${fmt(q[key])} ${esc(q.unit)}`);
   return parts.length ? parts.join('<br>') : '-';
 }
 
-function perfRoadDetail(r) {
+// Summary table whose rows expand (click / Enter) into `detail(row)`.
+// opts.actions(row, i) -> html adds a trailing no-print cell (e.g. a Print button).
+function expandableTable(rows, cols, opts) {
+  opts = opts || {};
+  if (!rows.length) return '<p class="hint">No data.</p>';
+  const span = cols.length + (opts.actions ? 1 : 0);
+  return `
+    <table class="data-table sel-table">
+      <thead><tr>${cols.map(c => `<th>${c.head}</th>`).join('')}${opts.actions ? '<th class="no-print"></th>' : ''}</tr></thead>
+      <tbody>${rows.map((r, i) => `
+        <tr class="sel-row" data-sel="${i}" tabindex="0" aria-expanded="false" title="${esc(opts.title || 'Click to see road-wise details')}">
+          ${cols.map(c => `<td${c.cls ? ` class="${c.cls}"` : ''}>${c.cell(r)}</td>`).join('')}
+          ${opts.actions ? `<td class="no-print">${opts.actions(r, i)}</td>` : ''}
+        </tr>
+        <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="${span}">${opts.detail(r)}</td></tr>`).join('')}</tbody>
+    </table>`;
+}
+
+// A one-row version of the same columns (used at the top of a group print).
+function summaryRowHtml(cols, r, groupHead) {
+  const heads = cols.map((c, i) => (i === 0 && groupHead ? groupHead : c.head));
+  return `<table class="data-table">
+    <thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+    <tbody><tr>${cols.map(c => `<td${c.cls ? ` class="${c.cls}"` : ''}>${c.cell(r)}</td>`).join('')}</tr></tbody>
+  </table>`;
+}
+
+// One road: a header line, then its activities as a table.
+function roadBlock(headerHtml, cols, acts, emptyMsg) {
   return `
     <div class="detail-box">
-      <p class="hint" style="margin:0 0 6px;"><b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash;
-        progress ${r.progress_pct}%, planned to date ${r.planned_pct}%</p>
-      <div class="table-scroll">
+      <p class="hint" style="margin:0 0 6px;">${headerHtml}</p>
+      ${(acts || []).length ? `<div class="table-scroll">
       <table class="data-table sub">
-        <thead><tr><th>Activity</th><th>Unit</th><th>Planned Qty</th><th>Actual Qty</th><th>% Complete</th></tr></thead>
-        <tbody>${(r.activities || []).map(a => `
-          <tr><td class="wrap">${esc(a.activity)}</td><td>${esc(a.unit) || '-'}</td>
-          <td>${fmt(a.planned_qty)}</td><td>${fmt(a.actual_qty)}</td><td>${a.actual_pct}%</td></tr>`).join('')
-          || '<tr><td colspan="5">No activities.</td></tr>'}</tbody>
+        <thead><tr>${cols.map(c => `<th>${c.head}</th>`).join('')}</tr></thead>
+        <tbody>${acts.map(a => `<tr>${cols.map(c => `<td${c.cls ? ` class="${c.cls}"` : ''}>${c.cell(a)}</td>`).join('')}</tr>`).join('')}</tbody>
       </table>
-      </div>
+      </div>` : `<p class="hint" style="margin:0;">${emptyMsg}</p>`}
     </div>`;
 }
 
-function performanceRows(rows) {
-  if (!rows.length) return '<tr><td colspan="7">No data.</td></tr>';
-  return rows.map((r, i) => `
-    <tr class="sel-row" data-sel="${i}" tabindex="0" aria-expanded="false" title="Click to see road-wise details">
-      <td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
-      <td>${r.progress_pct}%</td>
-      <td>${perfQty(r.quantity_by_unit, 'planned_qty')}</td>
-      <td>${perfQty(r.quantity_by_unit, 'actual_qty')}</td>
-      <td>${fmt(r.activities_behind)}</td>
-      <td>${r.activities_behind > 0
-        ? `<span class="pill pill-bad">Behind</span>`
-        : `<span class="pill pill-ok">On / ahead</span>`}</td>
-    </tr>
-    <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="7">
-      ${(r.road_rows || []).map(perfRoadDetail).join('') || '<p class="hint">No roads in this group.</p>'}
-    </td></tr>`).join('');
-}
+const roadsHtml = (roadRows, builder) =>
+  (roadRows || []).map(builder).join('') || '<p class="hint">No roads in this group.</p>';
 
-function performanceTable(rows) {
-  return `
-    <table class="data-table sel-table">
-      <thead><tr><th>Group</th><th>Roads</th><th>Progress %</th><th>Planned Qty</th><th>Actual Qty</th><th>Activities Behind</th><th>Status</th></tr></thead>
-      <tbody>${performanceRows(rows)}</tbody>
-    </table>`;
-}
+// ---- activity column sets -------------------------------------------------
+const ACT_BASE = [
+  { head: 'Activity', cell: a => esc(a.activity) + (a.no_planned_qty ? ' <span class="muted">(no planned qty)</span>' : ''), cls: 'wrap' },
+  { head: 'Unit', cell: a => esc(a.unit) || '-' },
+  { head: 'Planned Qty', cell: a => fmt(a.planned_qty) },
+  { head: 'Actual Qty', cell: a => fmt(a.actual_qty) },
+];
+const ACT_COLS = {
+  perf: [...ACT_BASE, { head: '% Complete', cell: a => `${a.actual_pct}%` }],
+  backlog: [...ACT_BASE,
+    { head: 'Backlog Qty', cell: a => `<b>${fmt(a.backlog_qty)}</b>` },
+    { head: 'Behind %', cell: a => `${a.backlog_pct}%` }],
+  target: [...ACT_BASE,
+    { head: 'Backlog Qty', cell: a => fmt(a.backlog_qty) },
+    { head: 'Next Planned Qty', cell: a => fmt(a.next_planned_qty) },
+    { head: 'Target Qty', cell: a => `<b>${fmt(a.target_qty)}</b>` }],
+};
+
+// ---- Performance ---------------------------------------------------------
+const PERF_COLS = [
+  { head: 'Group', cell: r => esc(r.group) },
+  { head: 'Roads', cell: r => fmt(r.roads) },
+  { head: 'Progress %', cell: r => `${r.progress_pct}%` },
+  { head: 'Planned Qty', cell: r => qtyByUnit(r.quantity_by_unit, 'planned_qty') },
+  { head: 'Actual Qty', cell: r => qtyByUnit(r.quantity_by_unit, 'actual_qty') },
+  { head: 'Activities Behind', cell: r => fmt(r.activities_behind) },
+  { head: 'Status', cell: r => r.activities_behind > 0
+    ? '<span class="pill pill-bad">Behind</span>' : '<span class="pill pill-ok">On / ahead</span>' },
+];
+const perfRoadDetail = r => roadBlock(
+  `<b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash; progress ${r.progress_pct}%, planned to date ${r.planned_pct}%`,
+  ACT_COLS.perf, r.activities, 'No activities.');
+const performanceTable = rows => expandableTable(rows, PERF_COLS, { detail: r => roadsHtml(r.road_rows, perfRoadDetail) });
 
 /* =====================================================================
    PRINT ONE GROUP - a clean sheet for a single vendor / line manager (Targets
@@ -2172,7 +2577,7 @@ function printSheet(title, html) {
   el.innerHTML = `
     <div class="print-banner">
       <span class="brand-mark">TATA STEEL</span>
-      <span class="brand-sub">Road Infrastructure Programme &mdash; Phase 1</span>
+      <span class="brand-sub">Road Infrastructure Programme</span>
     </div>
     <h2 class="print-title">${esc(title)}</h2>
     <p class="print-meta">Printed ${fmtDate(todayISO())}</p>
@@ -2195,58 +2600,78 @@ const GROUP_LABEL = { vendor: 'Vendor', line_manager: 'Line Manager' };
 let TARGET_VIEW = {};     // group type -> { tg, rows } as currently shown on the Targets tab
 let BACKLOG_VIEW = {};    // group type -> { bl, rows } as currently shown on the Performance tab
 
+const printButton = (attr, i, groupKey) =>
+  `<button type="button" class="btn-small btn-edit" ${attr}="${i}" data-print-group="${groupKey}">Print</button>`;
+
+// ---- Targets ---------------------------------------------------------------
+const TARGET_COLS = [
+  { head: 'Group', cell: r => esc(r.group) },
+  { head: 'Roads', cell: r => fmt(r.roads) },
+  { head: 'Actual % Now', cell: r => `${r.actual_pct}%` },
+  { head: 'Backlog %', cell: r => `${r.backlog_pct}%` },
+  { head: 'Next Planned %', cell: r => `${r.next_planned_pct}%` },
+  { head: 'Target %', cell: r => `<b>${r.target_pct}%</b>` },
+  { head: 'Target Cumulative %', cell: r => `${r.target_cumulative_pct}%` },
+  { head: 'Backlog Qty', cell: r => qtyByUnit(r.quantity_by_unit, 'backlog_qty') },
+  { head: 'Next Planned Qty', cell: r => qtyByUnit(r.quantity_by_unit, 'next_planned_qty') },
+  { head: 'Target Qty', cell: r => `<b>${qtyByUnit(r.quantity_by_unit, 'target_qty')}</b>` },
+];
+const targetRoadDetail = r => roadBlock(
+  `<b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash; actual ${r.actual_pct}%, backlog ${r.backlog_pct}%, next planned ${r.next_planned_pct}%, target <b>${r.target_pct}%</b> (cumulative ${r.target_cumulative_pct}%)`,
+  ACT_COLS.target, r.activities, 'No backlog or planned work on this road in the selected period.');
+const targetTable = (rows, groupKey) => expandableTable(rows, TARGET_COLS, {
+  detail: r => roadsHtml(r.road_rows, targetRoadDetail),
+  actions: (r, i) => printButton('data-print-target', i, groupKey),
+});
+
 function printTargetGroup(groupKey, idx) {
   const v = TARGET_VIEW[groupKey];
   const r = v && v.rows[idx];
   if (!r) return;
   printSheet(`Target - ${GROUP_LABEL[groupKey]} ${r.group} - ${fmtDate(v.tg.from)} to ${fmtDate(v.tg.to)}`, `
-    <table class="data-table">
-      <thead><tr><th>${GROUP_LABEL[groupKey]}</th><th>Roads</th><th>Actual % Now</th><th>Backlog %</th><th>Next Planned %</th><th>Target %</th><th>Target Cumulative %</th>
-        <th>Backlog Qty</th><th>Next Planned Qty</th><th>Target Qty</th></tr></thead>
-      <tbody><tr><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td><td>${r.actual_pct}%</td><td>${r.backlog_pct}%</td>
-        <td>${r.next_planned_pct}%</td><td><b>${r.target_pct}%</b></td><td>${r.target_cumulative_pct}%</td>
-        <td>${qtyByUnit(r.quantity_by_unit, 'backlog_qty')}</td><td>${qtyByUnit(r.quantity_by_unit, 'next_planned_qty')}</td>
-        <td><b>${qtyByUnit(r.quantity_by_unit, 'target_qty')}</b></td></tr></tbody>
-    </table>
+    ${summaryRowHtml(TARGET_COLS, r, GROUP_LABEL[groupKey])}
     <h3 class="print-sub">Road-wise details</h3>
-    ${(r.road_rows || []).map(targetRoadDetail).join('') || '<p>No roads in this group.</p>'}`);
+    ${roadsHtml(r.road_rows, targetRoadDetail)}`);
 }
 
-// Roads that actually carry a backlog (activities with backlog_qty > 0).
-function backlogRoadsOnly(roadRows) {
-  return (roadRows || []).filter(r => (r.activities || []).some(a => a.backlog_qty > 0) || r.backlog_pct > 0);
-}
+// ---- Backlog -----------------------------------------------------------------
+const BACKLOG_COLS = [
+  { head: 'Group', cell: r => esc(r.group) },
+  { head: 'Roads', cell: r => fmt(r.roads) },
+  { head: 'Planned %', cell: r => `${r.planned_pct}%` },
+  { head: 'Actual %', cell: r => `${r.actual_pct}%` },
+  { head: 'Backlog %', cell: r => r.backlog_pct > 0
+    ? `<span class="pill pill-bad">${r.backlog_pct}%</span>` : '<span class="pill pill-ok">0%</span>' },
+  { head: 'Backlog Qty', cell: r => qtyByUnit(r.quantity_by_unit, 'backlog_qty') },
+  { head: 'Activities Behind', cell: r => fmt(r.activities_behind) },
+];
 
-function backlogRoadDetail(r) {
-  const acts = (r.activities || []).filter(a => a.backlog_qty > 0);
-  return `
-    <div class="detail-box">
-      <p class="hint" style="margin:0 0 6px;"><b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash;
-        actual ${r.actual_pct}%, planned ${r.planned_pct}%, backlog <b>${r.backlog_pct}%</b></p>
-      ${acts.length ? `
-      <table class="data-table sub">
-        <thead><tr><th>Activity</th><th>Unit</th><th>Planned Qty</th><th>Actual Qty</th><th>Backlog Qty</th></tr></thead>
-        <tbody>${acts.map(a => `<tr><td class="wrap">${esc(a.activity)}</td><td>${esc(a.unit) || '-'}</td>
-          <td>${fmt(a.planned_qty)}</td><td>${fmt(a.actual_qty)}</td><td><b>${fmt(a.backlog_qty)}</b></td></tr>`).join('')}</tbody>
-      </table>` : '<p class="hint" style="margin:0;">No backlog on this road.</p>'}
-    </div>`;
-}
+// Only roads / activities that actually carry a backlog are listed.
+// behind by quantity, or by % (an activity with no planned quantity can only be behind by %)
+const isBacklogActivity = a => a.backlog_qty > 0 || a.backlog_pct > 0;
+const backlogRoadsOnly = roadRows =>
+  (roadRows || []).filter(r => (r.activities || []).some(isBacklogActivity) || r.backlog_pct > 0);
+const backlogRoadDetail = r => roadBlock(
+  `<b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash; actual ${r.actual_pct}%, planned ${r.planned_pct}%, backlog <b>${r.backlog_pct}%</b>`,
+  ACT_COLS.backlog, (r.activities || []).filter(isBacklogActivity), 'No backlog on this road.');
+const backlogRoadsHtml = r => backlogRoadsOnly(r.road_rows).map(backlogRoadDetail).join('')
+  || '<p class="hint">No backlog on any road in this group.</p>';
+const backlogTable = (rows, groupKey) => expandableTable(rows, BACKLOG_COLS, {
+  title: 'Click to see road-wise backlog',
+  detail: backlogRoadsHtml,
+  actions: (r, i) => printButton('data-print-backlog', i, groupKey),
+});
 
 function printBacklogGroup(groupKey, idx) {
   const v = BACKLOG_VIEW[groupKey];
   const r = v && v.rows[idx];
   if (!r) return;
   const bl = v.bl;
-  const roads = backlogRoadsOnly(r.road_rows);
   printSheet(`Backlog - ${GROUP_LABEL[groupKey]} ${r.group} - as at ${fmtDate(bl.as_of)}`, `
     <p class="print-meta">Backlog as at ${fmtDate(bl.as_of)} (${esc(monthLabel(bl.month))}): scheduled work not yet done.</p>
-    <table class="data-table">
-      <thead><tr><th>${GROUP_LABEL[groupKey]}</th><th>Roads</th><th>Planned %</th><th>Actual %</th><th>Backlog %</th><th>Backlog Qty</th><th>Activities Behind</th></tr></thead>
-      <tbody><tr><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td><td>${r.planned_pct}%</td><td>${r.actual_pct}%</td>
-        <td><b>${r.backlog_pct}%</b></td><td>${qtyByUnit(r.quantity_by_unit, 'backlog_qty')}</td><td>${fmt(r.activities_behind)}</td></tr></tbody>
-    </table>
+    ${summaryRowHtml(BACKLOG_COLS, r, GROUP_LABEL[groupKey])}
     <h3 class="print-sub">Road-wise backlog</h3>
-    ${roads.map(backlogRoadDetail).join('') || '<p>No backlog on any road in this group.</p>'}`);
+    ${backlogRoadsHtml(r)}`);
 }
 
 function wirePrintButtons(wrap) {
@@ -2258,66 +2683,6 @@ function wirePrintButtons(wrap) {
     e.stopPropagation();
     printBacklogGroup(b.dataset.printGroup, Number(b.dataset.printBacklog));
   }));
-}
-
-function backlogTable(rows, groupKey) {
-  if (!rows.length) return '<p class="hint">No data.</p>';
-  return `
-    <table class="data-table sel-table">
-      <thead><tr><th>Group</th><th>Roads</th><th>Planned %</th><th>Actual %</th><th>Backlog %</th><th>Activities Behind</th><th class="no-print"></th></tr></thead>
-      <tbody>${rows.map((r, i) => `
-        <tr class="sel-row" data-sel="${i}" tabindex="0" aria-expanded="false" title="Click to see road-wise backlog"><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
-        <td>${r.planned_pct}%</td><td>${r.actual_pct}%</td>
-        <td>${r.backlog_pct > 0 ? `<span class="pill pill-bad">${r.backlog_pct}%</span>` : '<span class="pill pill-ok">0%</span>'}</td>
-        <td>${fmt(r.activities_behind)}</td>
-        <td class="no-print"><button type="button" class="btn-small btn-edit" data-print-backlog="${i}" data-print-group="${groupKey}">Print</button></td></tr>
-        <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="7">
-          ${backlogRoadsOnly(r.road_rows).map(backlogRoadDetail).join('') || '<p class="hint">No backlog on any road in this group.</p>'}
-        </td></tr>`).join('')}</tbody>
-    </table>`;
-}
-
-function qtyByUnit(list, key) {
-  const parts = (list || []).filter(q => q[key] > 0).map(q => `${fmt(q[key])} ${esc(q.unit)}`);
-  return parts.length ? parts.join('<br>') : '-';
-}
-
-function targetRoadDetail(r) {
-  return `
-    <div class="detail-box">
-      <p class="hint" style="margin:0 0 6px;"><b>R${esc(r.road_no)} ${esc(r.location)}</b> &mdash;
-        actual ${r.actual_pct}%, backlog ${r.backlog_pct}%, next planned ${r.next_planned_pct}%,
-        target <b>${r.target_pct}%</b> (cumulative ${r.target_cumulative_pct}%)</p>
-      ${(r.activities || []).length ? `<div class="table-scroll">
-      <table class="data-table sub">
-        <thead><tr><th>Activity</th><th>Unit</th><th>Planned Qty</th><th>Actual Qty</th><th>Backlog Qty</th><th>Next Planned Qty</th><th>Target Qty</th></tr></thead>
-        <tbody>${(r.activities || []).map(a => `
-          <tr><td class="wrap">${esc(a.activity)}</td><td>${esc(a.unit) || '-'}</td>
-          <td>${fmt(a.planned_qty)}</td><td>${fmt(a.actual_qty)}</td><td>${fmt(a.backlog_qty)}</td>
-          <td>${fmt(a.next_planned_qty)}</td><td><b>${fmt(a.target_qty)}</b></td></tr>`).join('')}</tbody>
-      </table>
-      </div>` : '<p class="hint" style="margin:0;">No backlog or planned work on this road in the selected period.</p>'}
-    </div>`;
-}
-
-function targetTable(rows, groupKey) {
-  if (!rows.length) return '<p class="hint">No data.</p>';
-  return `
-    <table class="data-table sel-table">
-      <thead><tr><th>Group</th><th>Roads</th><th>Actual % Now</th><th>Backlog %</th><th>Next Planned %</th><th>Target %</th><th>Target Cumulative %</th>
-        <th>Backlog Qty</th><th>Next Planned Qty</th><th>Target Qty</th><th class="no-print"></th></tr></thead>
-      <tbody>${rows.map((r, i) => `
-        <tr class="sel-row" data-sel="${i}" tabindex="0" aria-expanded="false" title="Click to see road-wise details"><td>${esc(r.group)}</td><td>${fmt(r.roads)}</td>
-        <td>${r.actual_pct}%</td><td>${r.backlog_pct}%</td><td>${r.next_planned_pct}%</td>
-        <td><b>${r.target_pct}%</b></td><td>${r.target_cumulative_pct}%</td>
-        <td>${qtyByUnit(r.quantity_by_unit, 'backlog_qty')}</td>
-        <td>${qtyByUnit(r.quantity_by_unit, 'next_planned_qty')}</td>
-        <td><b>${qtyByUnit(r.quantity_by_unit, 'target_qty')}</b></td>
-        <td class="no-print"><button type="button" class="btn-small btn-edit" data-print-target="${i}" data-print-group="${groupKey}">Print</button></td></tr>
-        <tr class="sel-detail" data-sel-detail="${i}" hidden><td colspan="11">
-          ${(r.road_rows || []).map(targetRoadDetail).join('') || '<p class="hint">No roads in this group.</p>'}
-        </td></tr>`).join('')}</tbody>
-    </table>`;
 }
 
 function monthLabel(ym) {
@@ -2504,10 +2869,9 @@ function setTargetDateMins() {
 
 // Quick ranges: "N days from tomorrow" = From tomorrow, To tomorrow + N days.
 function targetRangeDates(days) {
-  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const from = new Date(); from.setDate(from.getDate() + 1);
   const to = new Date(from); to.setDate(to.getDate() + days);
-  return { from: iso(from), to: iso(to) };
+  return { from: toISO(from), to: toISO(to) };
 }
 
 // Highlight the quick-range button whose dates are currently selected (if any).
@@ -2534,11 +2898,10 @@ function wireRangeButtons() {
 }
 
 function setDefaultTargetDates() {
-  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const from = new Date();
   const to = new Date(from.getTime() + 30 * 86400000);
-  document.getElementById('tgtFilterFrom').value = iso(from);
-  document.getElementById('tgtFilterTo').value = iso(to);
+  document.getElementById('tgtFilterFrom').value = toISO(from);
+  document.getElementById('tgtFilterTo').value = toISO(to);
   setTargetDateMins();
   syncRangeButtons();
 }
@@ -2787,9 +3150,7 @@ async function init() {
   ]);
 }
 
-// Client-side only: re-fetch and re-render every DB-backed panel. There is
-// no backend rebuild action any more (/api/refresh is gone) - a real data
-// refresh is ./db/rebuild.sh, run by hand against Source/*.xlsx.
+// Client-side only: re-fetch and re-render every DB-backed panel.
 document.getElementById('refreshBtn').addEventListener('click', async (e) => {
   const btn = e.currentTarget;
   const original = btn.textContent;
@@ -2956,7 +3317,6 @@ document.getElementById('exportColumnsConfirm').addEventListener('click', () => 
   a.remove();
 });
 
-document.getElementById('overrideOnlyChk').addEventListener('change', renderEditLog);
 
 document.getElementById('addRoadToggle').addEventListener('click', () => toggleAddRoadForm());
 

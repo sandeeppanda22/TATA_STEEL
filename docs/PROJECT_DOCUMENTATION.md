@@ -92,10 +92,12 @@ UI -> `POST /api/db/activities/{id}/weekly` (`submit_weekly_entry`, `db_routes.p
 Activity % = `SUM(actual_qty) / planned_qty × 100`, capped at 100 for display. `road_progress` returns `(road_pct, drain_pct, over_planned_count)`; an activity whose actual exceeds `planned_qty` counts as 100% and increments `over_planned_count` (surfaced as `over_planned_count` on `/roads` and `/roads/{n}`, `over_planned` per activity, and warning pills in `dashboard.js`: `roadOverPlannedPill`, `overPlannedWarning`) so the user raises the planned qty. Road % (`road_progress`) = Σ over the road's majors of activity % × `weight_pct` / 100; the drain is tracked separately and excluded (BR-06/09). Overall % (`overall_progress`) = road % weighted by `length_m` (BR-07). Planned % (`road_planned_progress`) uses a straight-line spread between each activity's start and end date (OPEN-02 default; `straight_line_weeks` does the weekly split). Vendor/LM performance, bottlenecks (behind-plan threshold, "holding up next activity", stale-at-zero), `critical_path` and `milestones` build on these.
 
 ### 6.4 Edit master data
-`PUT /api/db/roads/{road_no}` and `PUT /api/db/activities/{id}` change only the supplied fields via `_apply_update`, write one `edit_log` row per changed field, return 409 if a BR-01/BR-02 source field is touched without `confirm_source_override=true`, and refuse a `weight_pct` change that breaks the road's 100 total. `GET /api/db/edit-log` and `GET /api/db/weight-audit` expose the audit trail.
+`PUT /api/db/roads/{road_no}` and `PUT /api/db/activities/{id}` change only the supplied fields via `_apply_update`, write one `edit_log` row per changed field, and refuse a `weight_pct` change that breaks the road's 100 total. `GET /api/db/edit-log` and `GET /api/db/weight-audit` expose the audit trail.
 
-### 6.5 Add a road without touching Excel
+### 6.5 Add a road
 The Roads tab's "Add Road" form calls `POST /api/db/roads` (`create_road`, body `RoadCreate` with a list of `ActivityCreate`). The road is stored with `source_file = 'manual-entry'`; because rebuilds are additive it is never erased by `./rebuild.sh`.
+
+**Add Road form rules** (Weight % is locked at 0 until a Major is chosen - in Add Road and in Edit Activity - and the API rejects a non-zero weight on an activity with no Major, because only the five majors carry weight, BR-04/06) (`dashboard.js` `validateAddRoad`, mirrored server-side in `create_road`): Road No is pre-filled with the next free number but editable, and is checked live against existing roads; Line Manager, Vendor and Road Type are dropdowns of existing values that always start blank (never auto-selected) with an "Add new..." option that rejects duplicates; Phase is the same kind of dropdown (required) with "+ Add new phase" (next number suggested, existing numbers rejected) - a new phase becomes a new group on the Roads tab; Road No and Location are required; blank Length / Drain are stored as 0; every activity needs a name and a planned quantity > 0 (untouched rows are ignored) and weights must total 100. The **Edit Road** form uses the same dropdowns (the road's current Vendor, Line Manager, Road Type and Phase pre-selected, each with an "Add new..." option and the same duplicate / phase-number checks) on the same even grid; both forms share `comboFieldHtml` / `comboCheck` / `comboValue`. API errors are shown as plain sentences (`apiErrorMessages`) instead of the raw validation output.
 
 ### 6.6 Dashboard page load
 `dashboard.js` `init()` loads its five panels concurrently (`Promise.all`: `refreshLiveRoads`, `renderIssues`, `renderWeightAudit`, `renderNavBadges`, `renderEditLog`), and `refreshLiveRoads()` fetches `/roads`, `/overview` and `/charts/activity-status` in parallel (the last may fail on its own; the overall panel then renders without it). Combined with the connection pool this removes the serial round-trips that made the first load slow.
@@ -108,6 +110,9 @@ Per-road **Issue** button → `POST /roads/{n}/issues` (From/To, reason). Unfini
 
 ### 6.9 Live refresh
 `db/05_live_change.sql` triggers bump one marker per watched table; the browser polls `GET /live/changes` (`static/live-refresh.js`, wired in `dashboard.js` `LIVE_TABLE_TABS`) and reloads only the affected tabs. A "New updates available" banner replaces a silent reload only when the user has unsaved typing. See `CLAUDE.md`.
+
+### 6.10 Phase groups (Roads tab)
+`GET /roads` now returns each road's `phase`. The Roads tab (`renderLiveRoadsTable`) groups roads by phase into collapsible sections (`phaseSection`): a header with the phase name, road count and length-weighted % complete, and the roads table inside. Sections are built from the distinct `phase` values in the data, so a new phase (Add Road with a new Phase number, or editing a road's Phase — now in the Edit Road form) appears automatically with the same collapse behaviour, filters and live refresh. Collapsed phases are remembered in `localStorage` (`tata_phase_collapsed`); a road opened programmatically (e.g. from Weight Audit) re-opens its phase. The top banner and page title no longer say "Phase 1".
 
 ## 7. API reference (`/api/db`)
 
@@ -127,7 +132,7 @@ Per-road **Issue** button → `POST /roads/{n}/issues` (From/To, reason). Unfini
 - **Seed header** has no generation timestamp any more (`gen_seed.py` line commented out), so regenerating from an unchanged workbook should no longer change `db/01_seed.sql` (not re-run to confirm; the committed file still carries its last timestamp line).
 - **Stale docstrings:** `dashboard/main.py` and `db_routes.py` refer to `db/rebuild.sh` and a "static dataset.json"; the script is `./rebuild.sh` at the repo root and no JSON tier exists.
 - **Unverified:** per `docs/02_build_and_rebuild.md`, the DB tier and rebuild scripts had not been run against a live Postgres when that doc was last updated (2026-10-09). The Neon MCP connection also failed in the session that produced this doc, so nothing here was checked against a live database.
-- **Editable-field policy** for BR-01/BR-02 fields (`confirm_source_override`) is a conservative placeholder, not a ruling.
+- **Editable fields.** Every road/activity field in the edit allowlists can be changed freely; the old source-override confirmation was removed because the database, not the workbook, is now the source of truth. `edit_log.source_override` is a legacy column, no longer written.
 
 ## 9. Open questions / TODOs
 

@@ -29,12 +29,10 @@ build/run/rebuild mechanics.
 - **Every percentage will read 0%** after a successful rebuild.
   `weekly_entry` is seeded empty on purpose (no fake data), so progress only
   appears once real actuals are entered.
-- **Editable-field policy unruled.** BR-01 makes Phase-Summary absolute truth
-  for every `road` column and BR-02 makes `activity.raw_name` verbatim, which
-  conflicts with editing them. Current stand-in: the API allows such edits
-  only when the request sets `confirm_source_override=true`, and records them
-  in `edit_log` with `source_override = TRUE`. That is a conservative
-  placeholder, not a decision.
+- **Editable fields (superseded).** BR-01 / BR-02 once treated the workbook as
+  untouchable truth. The database is now the source of truth: road and
+  activity fields are edited freely, with every change recorded in `edit_log`
+  and no confirmation step (`confirm_source_override` and the 409 were removed).
 
 Nothing below has been exercised end-to-end — these are the commands, not a
 confirmation that they've been run successfully together.
@@ -182,12 +180,10 @@ been exercised end to end; Vercel never runs `rebuild.sh`.
   exists, behavior unverified.
 - **API — edit layer**: done = a `PUT /api/db/roads/{n}` and a
   `PUT /api/db/activities/{id}` each change only the supplied fields, write one
-  `edit_log` row per actually-changed field, return `409` with the
-  `confirm_source_override` challenge when a BR-01/BR-02 source field is
-  touched without it, and refuse a `weight_pct` edit that breaks the road's
+  `edit_log` row per actually-changed field, and refuse a `weight_pct` edit that breaks the road's
   100 total. Also unexercised — same reason.
 - **UI**: done = the dashboard reads live `/api/db/*` data AND has a working
   weekly entry screen AND road/activity edit forms that surface the `409`
-  messages (source-override confirm step, BR-05 weight message) rather than failing silently. The read/write wiring to `/api/db/*`
+  messages (BR-05 weight message) rather than failing silently. The read/write wiring to `/api/db/*`
   is in place (`dashboard/static/dashboard.js`); still unverified end-to-end
   against a rebuilt DB for the same reason as the rows above.

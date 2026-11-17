@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/db", tags=["db"])
 @router.get("/roads")
 def list_roads():
     roads = db.query(
-        "SELECT road_no, location, line_manager, vendor, road_type, length_m, "
+        "SELECT road_no, phase, location, line_manager, vendor, road_type, length_m, "
         "width_m, drain_planned_m, cost_cr, start_date, end_date, source_file "
         "FROM road ORDER BY road_no"
     )
@@ -80,12 +80,20 @@ def road_detail(road_no: int):
             "over_planned_count": over_planned, "activities": acts_out}
 
 
+def _check_date_order(start, end, what=""):
+    """422 when an end date is before its start date. The one rule behind road
+    create/edit and activity create/edit. `what` prefixes the message, e.g.
+    "activity 'WMM': "."""
+    if start and end and end < start:
+        raise HTTPException(422, f"{what}end_date ({end}) is before start_date ({start})")
+
+
 class ActivityCreate(BaseModel):
     raw_name: str
     major: str | None = None
     weight_pct: float = 0
     unit: str | None = None
-    planned_qty: float = 0
+    planned_qty: float            # required: an activity with no planned quantity can't track progress
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
     seq_no: int | None = None
@@ -98,9 +106,9 @@ class RoadCreate(BaseModel):
     line_manager: str | None = None
     vendor: str | None = None
     road_type: str | None = None
-    length_m: float = 0
+    length_m: float | None = 0          # blank is accepted and stored as 0
     width_m: float | None = None
-    drain_planned_m: float = 0
+    drain_planned_m: float | None = 0  # blank is accepted and stored as 0
     cost_cr: float | None = None
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
@@ -110,11 +118,9 @@ class RoadCreate(BaseModel):
 
 @router.post("/roads", status_code=201)
 def create_road(payload: RoadCreate):
-    """Add a new road straight into the dashboard, with its activities (and
-    their own start/end dates), without touching Source/*.xlsx or running a
-    rebuild. source_file is stamped 'manual-entry' so it is clearly
-    distinguishable from a workbook-seeded road; because rebuilds are now
-    incremental (ON CONFLICT DO NOTHING on road_no), a road added here is
+    """Add a new road, with its activities (and their own start/end dates),
+    straight into the database. source_file is stamped 'manual-entry'; rebuilds
+    are incremental (ON CONFLICT DO NOTHING on road_no), so a road added here is
     never erased by a later ./rebuild.sh.
     """
     if db.query("SELECT road_no FROM road WHERE road_no = %s", (payload.road_no,)):
@@ -123,12 +129,19 @@ def create_road(payload: RoadCreate):
                  "unique - pick an unused number, or edit the existing road instead."
         )
 
-    if payload.length_m < 0:
-        raise HTTPException(422, "length_m cannot be negative")
-    if payload.drain_planned_m < 0:
-        raise HTTPException(422, "drain_planned_m cannot be negative")
-    if payload.start_date and payload.end_date and payload.end_date < payload.start_date:
-        raise HTTPException(422, f"end_date ({payload.end_date}) is before start_date ({payload.start_date})")
+    length_m = payload.length_m or 0
+    drain_planned_m = payload.drain_planned_m or 0
+    if payload.road_no < 1:
+        raise HTTPException(422, "Road number must be 1 or higher")
+    if payload.phase < 1:
+        raise HTTPException(422, "Phase must be 1 or higher")
+    if not payload.location.strip():
+        raise HTTPException(422, "Location is required")
+    if length_m < 0:
+        raise HTTPException(422, "Length cannot be negative")
+    if drain_planned_m < 0:
+        raise HTTPException(422, "Drain planned cannot be negative")
+    _check_date_order(payload.start_date, payload.end_date)
 
     if not payload.activities:
         raise HTTPException(
@@ -147,11 +160,14 @@ def create_road(payload: RoadCreate):
         if a.major is not None and a.major not in VALID_MAJORS:
             raise HTTPException(422, f"major must be one of {sorted(VALID_MAJORS)} or null; got {a.major!r}")
         if not 0 <= a.weight_pct <= 100:
-            raise HTTPException(422, f"activity {a.raw_name!r}: weight_pct must be between 0 and 100")
-        if a.planned_qty < 0:
-            raise HTTPException(422, f"activity {a.raw_name!r}: planned_qty cannot be negative")
-        if a.start_date and a.end_date and a.end_date < a.start_date:
-            raise HTTPException(422, f"activity {a.raw_name!r}: end_date is before start_date")
+            raise HTTPException(422, f"Activity {a.raw_name!r}: Weight % must be between 0 and 100")
+        if a.planned_qty <= 0:
+            raise HTTPException(422, f"Activity {a.raw_name!r}: planned quantity is required and must be greater than 0")
+        _check_date_order(a.start_date, a.end_date, f"Activity {a.raw_name!r}: ")
+        if a.major is None and a.weight_pct:
+            raise HTTPException(
+                422, f"Activity {a.raw_name!r}: Weight % applies only to activities with a Major. "
+                     "Choose a Major, or leave the weight at 0.")
         weight_total += a.weight_pct
 
     # BR-05: a road's activity weights must total 100, same rule as on edits.
@@ -173,9 +189,10 @@ def create_road(payload: RoadCreate):
                     start_date, end_date, source_file)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'manual-entry')
                 """,
-                (payload.road_no, payload.phase, payload.scheme_sl_no, payload.location,
-                 payload.line_manager, payload.vendor, payload.road_type, payload.length_m,
-                 payload.width_m, payload.drain_planned_m, payload.cost_cr,
+                (payload.road_no, payload.phase, payload.scheme_sl_no, payload.location.strip(),
+                 (payload.line_manager or '').strip() or None, (payload.vendor or '').strip() or None,
+                 payload.road_type, length_m,
+                 payload.width_m, drain_planned_m, payload.cost_cr,
                  payload.start_date, payload.end_date),
             )
             for i, a in enumerate(payload.activities, start=1):
@@ -409,48 +426,24 @@ def data_issues():
 
 
 # ---------------------------------------------------------------------------
-# Editing seeded master data
+# Editing road / activity master data
 #
-# Every road/activity row is seeded from the source workbook, so editing it
-# means diverging from that workbook. Two business rules constrain this:
-#
-#   BR-01  Phase-Summary is absolute truth for EVERY column of `road`.
-#   BR-02  activity.raw_name is verbatim from the road sheet, never changed.
-#
-# Those fields are therefore "source fields". Edits to them are not blocked
-# outright -- the instruction was that seeded data must be editable -- but
-# they require an explicit confirm_source_override=true in the request and
-# are recorded in edit_log with source_override=TRUE, so divergence from the
-# workbook is always visible instead of silent. Non-source fields (quantities,
-# units, dates, weights on `activity`) edit normally.
-#
-# OPEN QUESTION, still unresolved: whether BR-01/BR-02 fields should be
-# editable at all, or hard-blocked. The override flag is a conservative
-# stand-in, not a ruling.
-#
-# Road creation (POST /roads, below) was previously not exposed because a
-# rebuild dropped and recreated the whole schema, so an API-created road
-# would have been erased on the next run. Rebuilds are now incremental
-# (db/00_schema.sql uses IF NOT EXISTS, scripts/gen_seed.py uses ON CONFLICT
-# DO NOTHING) and never touch an existing road_no, so a UI-added road
-# (source_file = 'manual-entry') survives every future rebuild exactly like
-# a workbook-seeded one. Deleting roads/activities is still not exposed -
-# no deletion path has been asked for.
+# The database is the source of truth. Any road or activity field in the
+# allowlists below can be edited through the PUT routes; every change is
+# written to edit_log (table, row, field, old value, new value, time), so the
+# history is always recoverable. Roads are added from the dashboard
+# (POST /roads, source_file = 'manual-entry'). Deleting roads/activities is
+# not exposed - no deletion path has been asked for.
 # ---------------------------------------------------------------------------
 ROAD_EDITABLE = {
     "scheme_sl_no", "location", "line_manager", "vendor", "road_type",
     "length_m", "width_m", "drain_planned_m", "cost_cr",
     "start_date", "end_date", "phase",
 }
-# BR-01: every road column traces to Phase-Summary, so all of them are source
-# fields. This set is intentionally equal to ROAD_EDITABLE, not a subset.
-ROAD_SOURCE_FIELDS = set(ROAD_EDITABLE)
-
 ACTIVITY_EDITABLE = {
     "raw_name", "major", "weight_pct", "unit", "planned_qty",
     "start_date", "end_date", "seq_no",
 }
-ACTIVITY_SOURCE_FIELDS = {"raw_name"}          # BR-02
 VALID_MAJORS = {"Excavation", "GSB", "WMM", "DLC", "Road"}
 
 
@@ -467,7 +460,6 @@ class RoadUpdate(BaseModel):
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
     phase: int | None = None
-    confirm_source_override: bool = False
 
 
 class ActivityUpdate(BaseModel):
@@ -479,7 +471,6 @@ class ActivityUpdate(BaseModel):
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
     seq_no: int | None = None
-    confirm_source_override: bool = False
 
 
 @router.put("/roads/{road_no}")
@@ -490,7 +481,6 @@ def update_road(road_no: int, payload: RoadUpdate):
     current = current[0]
 
     supplied = payload.model_dump(exclude_unset=True)
-    supplied.pop("confirm_source_override", None)
     changes = {k: v for k, v in supplied.items() if k in ROAD_EDITABLE}
     if not changes:
         raise HTTPException(422, "No editable field supplied. Editable fields: "
@@ -500,40 +490,10 @@ def update_road(road_no: int, payload: RoadUpdate):
         if fld in changes and changes[fld] is not None and float(changes[fld]) < 0:
             raise HTTPException(422, f"{fld} cannot be negative")
 
-    new_start = changes.get("start_date", current["start_date"])
-    new_end = changes.get("end_date", current["end_date"])
-    if new_start and new_end and new_end < new_start:
-        raise HTTPException(422, f"end_date ({new_end}) is before start_date ({new_start})")
+    _check_date_order(changes.get("start_date", current["start_date"]),
+                      changes.get("end_date", current["end_date"]))
 
-    # A road's drain target cannot drop below drain progress already recorded,
-    # or BR-09 drain % would exceed 100.
-    if "drain_planned_m" in changes and changes["drain_planned_m"] is not None:
-        done = db.query(
-            "SELECT COALESCE(SUM(w.actual_qty),0) AS done FROM activity a "
-            "JOIN weekly_entry w ON w.activity_id = a.activity_id "
-            "WHERE a.road_no = %s AND a.is_drain", (road_no,),
-        )[0]["done"]
-        if float(changes["drain_planned_m"]) < float(done):
-            raise HTTPException(
-                409,
-                f"drain_planned_m {changes['drain_planned_m']} is below the "
-                f"{float(done)} m of drain already recorded as complete. Correct "
-                f"the weekly drain entries first, or set a target >= {float(done)}."
-            )
-
-    touched_source = sorted(f for f in changes if f in ROAD_SOURCE_FIELDS)
-    if touched_source and not payload.confirm_source_override:
-        raise HTTPException(
-            409,
-            "The project summary sheet is the authoritative source for every road "
-            f"field, including {', '.join(touched_source)}. Editing it makes this "
-            "row differ from the source workbook, and the next hard rebuild will "
-            "overwrite the change. Resend with confirm_source_override=true to "
-            "proceed; the edit will be recorded in edit_log as a source override."
-        )
-
-    return _apply_update("road", "road_no", road_no, current, changes,
-                         ROAD_SOURCE_FIELDS)
+    return _apply_update("road", "road_no", road_no, current, changes)
 
 
 @router.put("/activities/{activity_id}")
@@ -545,7 +505,6 @@ def update_activity(activity_id: int, payload: ActivityUpdate):
     road_no = current["road_no"]
 
     supplied = payload.model_dump(exclude_unset=True)
-    supplied.pop("confirm_source_override", None)
     changes = {k: v for k, v in supplied.items() if k in ACTIVITY_EDITABLE}
     if not changes:
         raise HTTPException(422, "No editable field supplied. Editable fields: "
@@ -563,28 +522,26 @@ def update_activity(activity_id: int, payload: ActivityUpdate):
 
     if "weight_pct" in changes and changes["weight_pct"] is not None:
         if not 0 <= float(changes["weight_pct"]) <= 100:
-            raise HTTPException(422, "weight_pct must be between 0 and 100")
+            raise HTTPException(422, "Weight % must be between 0 and 100")
+
+    # Weight % only exists for the five majors (BR-04/06): without a Major it must be 0.
+    if "major" in changes or "weight_pct" in changes:
+        eff_major = changes["major"] if "major" in changes else current["major"]
+        eff_weight = changes["weight_pct"] if "weight_pct" in changes else current["weight_pct"]
+        if eff_major is None and float(eff_weight or 0) != 0:
+            raise HTTPException(
+                422, "Weight % applies only to activities with a Major. Choose a Major for this "
+                     "activity, or set its weight to 0.")
 
     if "planned_qty" in changes and changes["planned_qty"] is not None:
+        # The planned quantity entered is always respected - it is NOT blocked by
+        # actuals already recorded (displayed % is capped at 100 and the activity is
+        # flagged "actual > planned" instead).
         if float(changes["planned_qty"]) < 0:
-            raise HTTPException(422, "planned_qty cannot be negative")
-        done = db.query(
-            "SELECT COALESCE(SUM(actual_qty),0) AS done FROM weekly_entry "
-            "WHERE activity_id = %s", (activity_id,),
-        )[0]["done"]
-        if float(done) > float(changes["planned_qty"]):
-            raise HTTPException(
-                409,
-                f"planned_qty {changes['planned_qty']} is below the {float(done)} "
-                f"{current['unit'] or 'units'} already recorded as complete, which "
-                f"would report over 100%. Correct the weekly entries first, or set "
-                f"planned_qty >= {float(done)}."
-            )
+            raise HTTPException(422, "Planned quantity cannot be negative")
 
-    new_start = changes.get("start_date", current["start_date"])
-    new_end = changes.get("end_date", current["end_date"])
-    if new_start and new_end and new_end < new_start:
-        raise HTTPException(422, f"end_date ({new_end}) is before start_date ({new_start})")
+    _check_date_order(changes.get("start_date", current["start_date"]),
+                      changes.get("end_date", current["end_date"]))
 
     # BR-05: the road's weights must still total 100 after this edit.
     if "weight_pct" in changes and changes["weight_pct"] is not None:
@@ -604,22 +561,10 @@ def update_activity(activity_id: int, payload: ActivityUpdate):
                 f"{round(100.0 - float(others), 2)}."
             )
 
-    touched_source = sorted(f for f in changes if f in ACTIVITY_SOURCE_FIELDS)
-    if touched_source and not payload.confirm_source_override:
-        raise HTTPException(
-            409,
-            f"Activity names are recorded verbatim from the road sheet, so "
-            f"{', '.join(touched_source)} should not normally be edited. The next "
-            f"hard rebuild will overwrite the change. Resend with "
-            f"confirm_source_override=true to proceed; the edit will be recorded "
-            f"in edit_log as a source override."
-        )
-
-    return _apply_update("activity", "activity_id", activity_id, current, changes,
-                         ACTIVITY_SOURCE_FIELDS)
+    return _apply_update("activity", "activity_id", activity_id, current, changes)
 
 
-def _apply_update(table, pk_col, pk_val, current, changes, source_fields):
+def _apply_update(table, pk_col, pk_val, current, changes):
     """Write the UPDATE and one edit_log row per actually-changed field.
 
     Fields whose new value equals the current value are dropped rather than
@@ -652,16 +597,14 @@ def _apply_update(table, pk_col, pk_val, current, changes, source_fields):
     for fld, new in real.items():
         old = current.get(fld)
         db.execute(
-            "INSERT INTO edit_log (table_name, row_pk, field, old_value, "
-            "new_value, source_override) VALUES (%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO edit_log (table_name, row_pk, field, old_value, new_value) "
+            "VALUES (%s,%s,%s,%s,%s)",
             (table, int(pk_val), fld,
              None if old is None else str(old),
-             None if new is None else str(new),
-             fld in source_fields),
+             None if new is None else str(new)),
         )
 
     return {"updated": True, "changed_fields": sorted(real),
-            "source_override_fields": sorted(f for f in real if f in source_fields),
             table: _jsonify(rows[0])}
 
 
@@ -678,7 +621,7 @@ def _apply_update(table, pk_col, pk_val, current, changes, source_fields):
 #   activity in progress across from_date   -> only its end moves +shift_days
 #   road.start_date / end_date              -> same rule as an activity
 # Everything runs in ONE transaction and every changed date is logged in
-# edit_log (road fields as source overrides, BR-01).
+# edit_log.
 #
 # road_issue_shift remembers exactly what each issue moved (which activities,
 # whether the start moved too, and the road). Editing or deleting an issue
@@ -698,13 +641,13 @@ def _issue_days(frm, to):
     return (to - frm).days + 1
 
 
-def _log_dates(cur, table, pk, fld, old_v, new_v, source_override):
+def _log_dates(cur, table, pk, fld, old_v, new_v):
     if old_v != new_v:
         cur.execute(
-            "INSERT INTO edit_log (table_name, row_pk, field, old_value, new_value, source_override) "
-            "VALUES (%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO edit_log (table_name, row_pk, field, old_value, new_value) "
+            "VALUES (%s,%s,%s,%s,%s)",
             (table, pk, fld, None if old_v is None else str(old_v),
-             None if new_v is None else str(new_v), source_override))
+             None if new_v is None else str(new_v)))
 
 
 def _apply_issue(cur, road_no, issue_id, frm, delta):
@@ -743,8 +686,8 @@ def _apply_issue(cur, road_no, issue_id, frm, delta):
         cur.execute("INSERT INTO road_issue_shift (issue_id, activity_id, moved_start) VALUES (%s,%s,%s)",
                     (issue_id, a["activity_id"], new[2]))
         counts["moved"] += 1
-        _log_dates(cur, "activity", a["activity_id"], "start_date", a["start_date"], new[0], False)
-        _log_dates(cur, "activity", a["activity_id"], "end_date", a["end_date"], new[1], False)
+        _log_dates(cur, "activity", a["activity_id"], "start_date", a["start_date"], new[0])
+        _log_dates(cur, "activity", a["activity_id"], "end_date", a["end_date"], new[1])
     cur.execute("SELECT start_date, end_date FROM road WHERE road_no = %s", (road_no,))
     road = cur.fetchone()
     rd = moved(road["start_date"], road["end_date"])
@@ -753,8 +696,8 @@ def _apply_issue(cur, road_no, issue_id, frm, delta):
                     (rd[0], rd[1], road_no))
         cur.execute("INSERT INTO road_issue_shift (issue_id, activity_id, moved_start) VALUES (%s,NULL,%s)",
                     (issue_id, rd[2]))
-        _log_dates(cur, "road", road_no, "start_date", road["start_date"], rd[0], True)
-        _log_dates(cur, "road", road_no, "end_date", road["end_date"], rd[1], True)
+        _log_dates(cur, "road", road_no, "start_date", road["start_date"], rd[0])
+        _log_dates(cur, "road", road_no, "end_date", road["end_date"], rd[1])
     return counts
 
 
@@ -771,8 +714,8 @@ def _revert_issue(cur, road_no, issue_id, shift_days):
             ns = row["start_date"] - delta if (sh["moved_start"] and row["start_date"]) else row["start_date"]
             ne = row["end_date"] - delta if row["end_date"] else row["end_date"]
             cur.execute("UPDATE road SET start_date = %s, end_date = %s WHERE road_no = %s", (ns, ne, road_no))
-            _log_dates(cur, "road", road_no, "start_date", row["start_date"], ns, True)
-            _log_dates(cur, "road", road_no, "end_date", row["end_date"], ne, True)
+            _log_dates(cur, "road", road_no, "start_date", row["start_date"], ns)
+            _log_dates(cur, "road", road_no, "end_date", row["end_date"], ne)
         else:
             cur.execute("SELECT start_date, end_date FROM activity WHERE activity_id = %s", (sh["activity_id"],))
             row = cur.fetchone()
@@ -782,8 +725,8 @@ def _revert_issue(cur, road_no, issue_id, shift_days):
             ne = row["end_date"] - delta if row["end_date"] else row["end_date"]
             cur.execute("UPDATE activity SET start_date = %s, end_date = %s WHERE activity_id = %s",
                         (ns, ne, sh["activity_id"]))
-            _log_dates(cur, "activity", sh["activity_id"], "start_date", row["start_date"], ns, False)
-            _log_dates(cur, "activity", sh["activity_id"], "end_date", row["end_date"], ne, False)
+            _log_dates(cur, "activity", sh["activity_id"], "start_date", row["start_date"], ns)
+            _log_dates(cur, "activity", sh["activity_id"], "end_date", row["end_date"], ne)
     cur.execute("DELETE FROM road_issue_shift WHERE issue_id = %s", (issue_id,))
 
 
@@ -898,9 +841,8 @@ def delete_weekly_entry(activity_id: int, entry_id: int):
 
 @router.get("/edit-log")
 def edit_log(table_name: str | None = None, row_pk: int | None = None,
-             source_override_only: bool = False, limit: int = 500):
-    """Audit trail of master-data edits. Also the record of where the DB now
-    differs from the source workbook (source_override_only=true)."""
+             limit: int = 500):
+    """Audit trail of road / activity edits (newest first)."""
     where, params = [], []
     if table_name:
         if table_name not in ("road", "activity"):
@@ -910,8 +852,6 @@ def edit_log(table_name: str | None = None, row_pk: int | None = None,
     if row_pk is not None:
         where.append("row_pk = %s")
         params.append(row_pk)
-    if source_override_only:
-        where.append("source_override")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     params.append(max(1, min(limit, 5000)))
     return [

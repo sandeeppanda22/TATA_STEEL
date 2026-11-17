@@ -124,10 +124,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_data_issue_dedup ON data_issue (
 --   answer "is this still what the sheet said, and if not, who changed it".
 --   Written by the API on every PUT; never written by the seed.
 --
---   source_override = TRUE marks an edit to a field BR-01 (Phase-Summary is
---   absolute truth) or BR-02 (activity names verbatim) says should not be
---   edited. Such edits are permitted but are deliberately flagged here, so
---   divergence from the source workbook is always visible rather than silent.
+--   source_override is a legacy column from when edits to workbook-sourced
+--   fields were flagged. It is no longer written (always FALSE) or shown; it is
+--   kept only because the schema never alters existing tables.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS edit_log (
     edit_id         BIGSERIAL PRIMARY KEY,

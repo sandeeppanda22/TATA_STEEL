@@ -731,3 +731,66 @@ table.weekly-table { margin-bottom: 10px; }
   color: var(--navy); border-bottom: 2px solid var(--navy); }
 .print-banner .brand-mark { color: var(--navy); margin-right: 12px; }
 .print-banner .brand-sub { color: var(--steel); }
+
+/* Phase groups on the Roads tab: one collapsible section per phase. */
+.phase-group { margin-bottom: 14px; }
+.phase-head { display: flex; align-items: baseline; gap: 14px; width: 100%; text-align: left; cursor: pointer;
+  font: inherit; padding: 10px 16px; background: var(--steel-light); color: var(--navy);
+  border: 1px solid var(--border); border-left: 4px solid var(--steel); border-radius: 6px; }
+.phase-head::before { content: "\25B8"; color: var(--accent); font-size: 13px; }
+.phase-head.open::before { content: "\25BE"; }
+.phase-head:hover { background: #E3EAF0; }
+.phase-head.open { background: var(--navy); color: #fff; border-left-color: var(--accent); }
+.phase-head.open:hover { background: var(--navy); }
+.phase-head:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.phase-title { font-weight: 700; font-size: 15px; letter-spacing: .3px; }
+.phase-meta { font-size: 12px; opacity: .85; }
+.phase-body { padding-top: 8px; }
+.phase-body[hidden] { display: none; }
+@media print { .phase-body[hidden] { display: block !important; } .phase-head { border: 1px solid #999; background: #fff !important; color: var(--navy) !important; } }
+
+/* Add Road form: required marks, live field messages, error state. */
+.req { color: var(--accent); font-weight: 700; }
+.field-msg { font-size: 12px; margin-left: 10px; }
+.field-msg.error { color: var(--accent); font-weight: 600; }
+.field-msg.ok { color: var(--ok); }
+.field-error { border-color: var(--accent) !important; background: #FFF5F5; }
+.form-errors { margin: 6px 0 0 18px; padding: 0; }
+.form-errors li { margin-bottom: 2px; }
+
+/* ---- Add Road form: professional / on-theme controls ------------------- */
+.edit-form .form-row select {
+  appearance: none; -webkit-appearance: none;
+  background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5l5 5 5-5' fill='none' stroke='%230A2A4A' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 10px center;
+  padding-right: 30px; cursor: pointer; min-width: 200px;
+}
+.edit-form .form-row select:hover, .edit-form .form-row input:hover { border-color: var(--steel); }
+
+/* the "type a new value" block under a dropdown */
+.combo-new { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; padding: 8px 10px;
+  background: #fff; border: 1px solid var(--border); border-left: 3px solid var(--navy); border-radius: 4px; }
+.combo-new[hidden] { display: none; }
+.combo-new-tag { font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--steel); }
+.combo-new input { width: 100%; box-sizing: border-box; }
+
+/* messages: quiet, readable - no shouting red blocks */
+.edit-form .field-msg { margin: 3px 0 0; font-size: 11.5px; line-height: 1.35; max-width: 260px; }
+.field-msg.error { color: var(--accent); font-weight: 500; }
+.field-msg.hint { color: var(--steel); }
+.field-msg.ok { color: var(--ok); font-weight: 500; }
+.field-error { border-color: var(--accent) !important; background: #fff !important; box-shadow: 0 0 0 2px rgba(200, 16, 46, .12); }
+.edit-form .form-row input:focus.field-error, .edit-form .form-row select:focus.field-error { outline-color: var(--accent); }
+
+/* Add Road: fields sit on one even grid - equal widths, tops aligned, so a
+   message or the "new value" block under one field never shifts its neighbours. */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px 20px; align-items: start; padding: 16px; }
+.form-grid .form-row { min-width: 0; }
+.form-grid .form-row input, .form-grid .form-row select {
+  width: 100%; min-width: 0; box-sizing: border-box; height: 36px; }
+.form-grid .field-msg { min-height: 16px; max-width: none; }
+.form-grid .combo-new input { height: 34px; }
+
+/* Save / Cancel sit on the bottom edge of the grid row, side by side. */
+.form-grid .form-actions { flex-direction: row; gap: 8px; align-self: end; }
+.form-grid .form-actions .btn-small { height: 36px; padding: 0 18px; }

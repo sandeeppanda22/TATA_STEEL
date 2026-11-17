@@ -51,6 +51,19 @@ def straight_line_weeks(start_date, end_date, planned_qty):
 # BR-06: road progress % = sum(major % complete * major weight).
 # BR-09: drain % tracked separately, same cumulative/planned mechanism.
 # ---------------------------------------------------------------------------
+def activity_pct(done, planned, cap=None):
+    """The one definition of "percent complete": done / planned * 100.
+
+    0 when there is no planned quantity (never a division error). `cap=100`
+    clamps for display (an activity can record more than was planned; the
+    over-planned flag, not a >100% figure, is how the UI reports that)."""
+    planned = float(planned) if planned else 0.0
+    if not planned:
+        return 0.0
+    pct = float(done or 0) / planned * 100
+    return min(pct, cap) if cap is not None else pct
+
+
 def road_progress(road_no):
     """Returns (road_pct, drain_pct, over_planned_count).
 
@@ -79,8 +92,7 @@ def road_progress(road_no):
     for a in acts:
         planned = float(a["planned_qty"]) if a["planned_qty"] else 0
         cum = float(a["cum_qty"])
-        raw_pct = (cum / planned * 100) if planned else 0
-        pct = min(raw_pct, 100)
+        pct = activity_pct(cum, planned, cap=100)
         if planned and cum > planned + 1e-6:
             over_planned += 1
         if a["is_drain"]:
@@ -202,7 +214,7 @@ def road_activity_rows(road_no):
     for a in acts:
         planned = float(a["planned_qty"]) if a["planned_qty"] else 0.0
         cum = float(a["cum_qty"])
-        actual_pct = round(min(cum / planned * 100, 100), 1) if planned else 0.0
+        actual_pct = round(activity_pct(cum, planned, cap=100), 1)
         planned_pct = round(_expected_pct_today(a["start_date"], a["end_date"], today), 1)
         status = "On track" if actual_pct >= planned_pct - 1e-6 else "Behind"
         out.append({
@@ -281,7 +293,7 @@ def _group_performance(group_field, line_manager=None, vendor=None):
         for a in ra:
             pq = float(a["planned_qty"]) if a["planned_qty"] else 0.0
             done = float(a["cum_qty"])
-            act_pct = (done / pq * 100) if pq else 0
+            act_pct = activity_pct(done, pq)
             if act_pct < _expected_pct_today(a["start_date"], a["end_date"], today) - 1e-6:
                 o["activities_behind"] += 1
             u = o["units"].setdefault(a["unit"] or "-", {"planned_qty": 0.0, "actual_qty": 0.0})
@@ -401,7 +413,7 @@ def group_plan(group_field, as_of, horizon_days=30, line_manager=None, vendor=No
         for a in ra:
             pq = float(a["planned_qty"]) if a["planned_qty"] else 0
             done = cum.get(a["activity_id"], 0.0)
-            ap = (done / pq * 100) if pq else 0
+            ap = activity_pct(done, pq)
             exp0 = _expected_pct_today(a["start_date"], a["end_date"], as_of)
             exp1 = _expected_pct_today(a["start_date"], a["end_date"], horizon_end)
             if ap < exp0 - 1e-6:
@@ -415,13 +427,20 @@ def group_plan(group_field, as_of, horizon_days=30, line_manager=None, vendor=No
                 bq = max(0.0, pq * exp0 / 100 - done)
                 tq = max(0.0, pq * exp1 / 100 - done)
                 nq = tq - bq
-                if tq < 0.005:
+                # The activity's own % behind schedule. An activity with NO planned
+                # quantity has no quantities to show, yet still counts as behind in
+                # the road/group % (0% done vs. its schedule) - so it must stay in the
+                # list, with its % shown, or the road reads "backlog 100%" with nothing
+                # listed under it.
+                behind_pct = max(0.0, exp0 - activity_pct(done, pq, cap=100))
+                if tq < 0.005 and behind_pct < 0.005:
                     continue  # nothing left to do in this period (no backlog, none needed)
                 act_rows.append({
                     "activity": a["raw_name"], "unit": a["unit"] or "",
                     "planned_qty": round(pq, 2), "actual_qty": round(done, 2),
                     "backlog_qty": round(bq, 2), "next_planned_qty": round(nq, 2),
-                    "target_qty": round(tq, 2),
+                    "target_qty": round(tq, 2), "backlog_pct": round(behind_pct, 1),
+                    "no_planned_qty": pq <= 0,
                 })
         nxt = target - backlog
         g = groups.setdefault(r["grp"] or "(unassigned)", {
@@ -536,14 +555,14 @@ def bottlenecks(threshold_pct=15, stale_weeks=3):
     for road_no, road_acts in by_road.items():
         seq_acts = sorted((a for a in road_acts if a["seq_no"] is not None), key=lambda a: a["seq_no"])
         for i, a in enumerate(seq_acts):
-            pct = (float(a["cum_qty"]) / float(a["planned_qty"]) * 100) if a["planned_qty"] else 0
+            pct = activity_pct(a["cum_qty"], a["planned_qty"])
             exp = _expected_pct_today(a["start_date"], a["end_date"], today)
             reasons = []
             if exp - pct > threshold_pct:
                 reasons.append(f"behind planned by {exp - pct:.1f}% (more than {threshold_pct}%)")
             if i + 1 < len(seq_acts):
                 nxt = seq_acts[i + 1]
-                nxt_pct = (float(nxt["cum_qty"]) / float(nxt["planned_qty"]) * 100) if nxt["planned_qty"] else 0
+                nxt_pct = activity_pct(nxt["cum_qty"], nxt["planned_qty"])
                 if abs(nxt_pct - pct) < 1e-6 and pct < 100 and nxt["start_date"] and nxt["start_date"] <= today:
                     reasons.append("holding up the next activity in sequence")
             if a["start_date"] and a["start_date"] <= today and pct == 0:
@@ -619,8 +638,7 @@ def critical_path(road_no):
                   "is_drain": a["is_drain"],
                   "start": a["start_date"].isoformat() if a["start_date"] else None,
                   "end": a["end_date"].isoformat() if a["end_date"] else None,
-                  "actual_pct": round(min(100, (float(a["cum_qty"]) / float(a["planned_qty"]) * 100)), 1)
-                                if a["planned_qty"] else 0}
+                  "actual_pct": round(activity_pct(a["cum_qty"], a["planned_qty"], cap=100), 1)}
                  for a in acts],
         "duration_days": duration_days,
         "overlap_flags": overlaps,
@@ -658,7 +676,7 @@ def milestones(window_days=30):
         crossed = {}
         for w in weekly:
             cum += float(w["actual_qty"])
-            pct = cum / float(a["planned_qty"]) * 100
+            pct = activity_pct(cum, a["planned_qty"])
             for mark in (25, 50, 100):
                 if pct >= mark and mark not in crossed:
                     crossed[mark] = w["week_start_date"]
@@ -699,11 +717,7 @@ def _road_pct_from_cum(acts_for_road, cum_by_act):
     for a in acts_for_road:
         if a["is_drain"] or not a["major"]:
             continue
-        planned = float(a["planned_qty"]) if a["planned_qty"] else 0
-        cum = cum_by_act.get(a["activity_id"], 0.0)
-        pct = (cum / planned * 100) if planned else 0
-        if pct > 100:
-            pct = 100
+        pct = activity_pct(cum_by_act.get(a["activity_id"], 0.0), a["planned_qty"], cap=100)
         road_pct += pct * float(a["weight_pct"]) / 100
     return road_pct
 
@@ -745,8 +759,7 @@ def activity_status_counts(line_manager=None):
     for r in rows:
         if r["is_drain"]:
             continue
-        planned = float(r["planned_qty"]) if r["planned_qty"] else 0
-        pct = (float(r["cum_qty"]) / planned * 100) if planned else 0
+        pct = activity_pct(r["cum_qty"], r["planned_qty"])
         if pct >= 100:
             complete += 1
         elif pct > 0:

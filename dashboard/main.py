@@ -1,8 +1,7 @@
 """Tata Steel Road Infrastructure Dashboard - FastAPI backend.
 Serves the static frontend and the live, Postgres-backed API. All dashboard
 data comes from the database (/api/db/*); there is no static JSON tier and no
-JSON data files in the repo. Rebuild the DB from the source Excel with
-db/rebuild.sh (Source/*.xlsx -> db/01_seed.sql -> Postgres).
+JSON data files in the repo.
 
 Run: python3 -m uvicorn dashboard.main:app --reload --port 8000
 Env: PORT (Render sets this automatically)
