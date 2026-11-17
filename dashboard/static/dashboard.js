@@ -967,7 +967,13 @@ const ROAD_COMBOS = { line_manager: 'line manager', vendor: 'vendor', road_type:
 const NEW_OPTION = '__new__';
 let ADD_ROAD_ROW_SEQ = 1;
 
-const nextFreeRoadNo = () => (LIVE_ROADS || []).reduce((m, r) => Math.max(m, Number(r.road_no) || 0), 0) + 1;
+// Smallest road number not in use yet - fills gaps (roads 1-20 and 23 exist -> 21) instead of max + 1.
+const nextFreeRoadNo = () => {
+  const used = new Set((LIVE_ROADS || []).map(r => Number(r.road_no)));
+  let n = 1;
+  while (used.has(n)) n += 1;
+  return n;
+};
 
 // Distinct existing values for a road field (line manager / vendor), sorted.
 // Phases already in use, numerically sorted as strings ("2" before "10").
