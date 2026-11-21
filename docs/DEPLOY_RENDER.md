@@ -126,8 +126,8 @@ Not needed on Neon: `db/06_alter_activity_unique.sql` (only matters when
 re-seeding with `rebuild.sh`).
 
 **Pre-deploy checklist**
-- Commit and push the changes to the branch Render deploys (`main`); they are
-  currently uncommitted on `develop`.
+- Make sure the changes are pushed to the branch Render deploys (`main`);
+  `develop` has been merged into `main` locally (check the remote is up to date).
 - `DATABASE_URL` set; `ALLOW_DB_BOOTSTRAP` = `no` (or `yes` for the one-off above).
 - Take a Neon branch/backup first if you can (cheap insurance, not required by the SQL).
 - After deploy: `/api/db/roads` loads, and `/api/db/live/changes` shows `"enabled": true`.
