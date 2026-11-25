@@ -824,6 +824,42 @@ def delete_road_issue(road_no: int, issue_id: int):
             "activities_restored": old["activities_shifted"]}
 
 
+class WeeklyEntryEdit(BaseModel):
+    actual_qty: float
+    note: str | None = None
+
+
+@router.put("/activities/{activity_id}/weekly/{entry_id}")
+def edit_weekly_entry(activity_id: int, entry_id: int, body: WeeklyEntryEdit):
+    """Correct ONE ledger submission's quantity/note in place. The row keeps
+    its week and entered_at; the activity's cumulative follows automatically
+    (SUM(actual_qty)). Each changed field is logged in edit_log under the
+    activity (field 'weekly_entry[<id>].<col>'; edit_log.table_name is
+    restricted to road/activity, so no schema change is needed)."""
+    if body.actual_qty < 0:
+        raise HTTPException(422, "actual_qty cannot be negative")
+    with _issue_tx() as cur:
+        cur.execute(
+            "SELECT actual_qty, note FROM weekly_entry "
+            "WHERE entry_id = %s AND activity_id = %s FOR UPDATE",
+            (entry_id, activity_id),
+        )
+        old = cur.fetchone()
+        if not old:
+            raise HTTPException(404, f"No weekly entry {entry_id} for activity {activity_id}")
+        cur.execute(
+            "UPDATE weekly_entry SET actual_qty = %s, note = %s WHERE entry_id = %s",
+            (body.actual_qty, body.note, entry_id),
+        )
+        old_qty = None if old["actual_qty"] is None else float(old["actual_qty"])
+        _log_dates(cur, "activity", activity_id,
+                   f"weekly_entry[{entry_id}].actual_qty", old_qty, float(body.actual_qty))
+        _log_dates(cur, "activity", activity_id,
+                   f"weekly_entry[{entry_id}].note", old["note"], body.note)
+    return {"updated": True, "activity_id": activity_id, "entry_id": entry_id,
+            "actual_qty": body.actual_qty, "note": body.note}
+
+
 @router.delete("/activities/{activity_id}/weekly/{entry_id}")
 def delete_weekly_entry(activity_id: int, entry_id: int):
     """Remove ONE ledger submission by its entry_id. In the append-only model

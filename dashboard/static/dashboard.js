@@ -1345,7 +1345,8 @@ function weeklyHistoryRows(activityId, entries) {
       <td>${fmt(e.cumulative_actual)}</td>
       <td>${e.cumulative_pct == null ? '-' : e.cumulative_pct + '%'}</td>
       <td class="wrap">${esc(e.note)}</td>
-      <td><button class="btn-small btn-danger" data-del-entry="${e.entry_id}" data-act="${activityId}">Delete</button></td>
+      <td><button class="btn-small btn-edit" data-edit-entry="${e.entry_id}" data-act="${activityId}" data-qty="${e.actual_this_week ?? ''}" data-note="${esc(e.note || '').replace(/"/g, '&quot;')}">Edit</button>
+          <button class="btn-small btn-danger" data-del-entry="${e.entry_id}" data-act="${activityId}">Delete</button></td>
     </tr>`).join('');
 }
 
@@ -1392,6 +1393,25 @@ async function renderWeeklyPanel(activityId, wrapEl) {
         <button class="btn-small btn-save wk-submit">Add Entry</button>
       </div>
       <p class="hint wk-weeknote">Recorded against week <b>${weekLabel(todayISO())}</b>. Each entry <b>adds to</b> the running total - it does not replace a week. Pick any day in a week.</p>`;
+    wrapEl.querySelectorAll('[data-edit-entry]').forEach(btn => btn.addEventListener('click', () => {
+      const tr = btn.closest('tr');
+      const cells = tr.querySelectorAll('td');
+      cells[2].innerHTML = `<input type="number" class="inline-input ed-qty" value="${esc(btn.dataset.qty)}">`;
+      cells[5].innerHTML = `<input type="text" class="inline-input ed-note" value="${esc(btn.dataset.note).replace(/"/g, '&quot;')}">`;
+      cells[6].innerHTML = '<button class="btn-small btn-save ed-save">Save</button> <button class="btn-small btn-cancel ed-cancel">Cancel</button>';
+      cells[6].querySelector('.ed-cancel').addEventListener('click', () => renderWeeklyPanel(activityId, wrapEl));
+      cells[6].querySelector('.ed-save').addEventListener('click', async () => {
+        const qty = tr.querySelector('.ed-qty').value;
+        if (qty === '' || Number(qty) < 0) { setLiveStatus('Enter a quantity of 0 or more.', true); return; }
+        try {
+          await dbSend('PUT', `/api/db/activities/${btn.dataset.act}/weekly/${btn.dataset.editEntry}`,
+            { actual_qty: Number(qty), note: tr.querySelector('.ed-note').value || null });
+          setLiveStatus('Entry updated.', false);
+          await renderWeeklyPanel(activityId, wrapEl);
+          await refreshLiveRoads();
+        } catch (err) { setLiveStatus('Update failed: ' + err.message, true); }
+      });
+    }));
     wrapEl.querySelectorAll('[data-del-entry]').forEach(btn => btn.addEventListener('click', async () => {
       if (!(await uiConfirm('Delete this entry?', { okLabel: 'Delete', danger: true }))) return;
       try {
