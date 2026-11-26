@@ -755,6 +755,47 @@ function uiConfirm(message, opts) {
   });
 }
 
+// Popup for deleting a weighted activity: choose which activity receives its weight so the
+// road's weights still total 100. Resolves to that activity_id (string) or null if cancelled.
+function uiPickWeightTarget(act, heirs) {
+  return new Promise(resolve => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'ui-dialog no-print';
+    dlg.innerHTML = `
+      <div class="ui-dialog-body">
+        <p style="margin:0 0 8px;"></p>
+        <label style="display:block;margin-bottom:4px;font-weight:600;">Give its weight to</label>
+        <select class="inline-input wt-target" style="width:100%;"></select>
+        <p class="hint wt-preview" style="margin:8px 0 0;"></p>
+      </div>
+      <div class="ui-dialog-foot">
+        <button type="button" class="btn-small btn-cancel" data-no>Cancel</button>
+        <button type="button" class="btn-small btn-danger" data-yes>Delete</button>
+      </div>`;
+    const entries = Number(act.cum_qty) > 0 ? ' Its recorded progress entries will be deleted too.' : '';
+    dlg.querySelector('p').textContent =
+      `Delete "${act.raw_name}"? It carries ${act.weight_pct}% weight, which must go to another activity so the road still totals 100.${entries} This cannot be undone.`;
+    const sel = dlg.querySelector('.wt-target'), prev = dlg.querySelector('.wt-preview');
+    heirs.forEach(h => {
+      const o = document.createElement('option');
+      o.value = h.activity_id; o.textContent = `${h.raw_name} (${h.weight_pct}%)`;
+      sel.appendChild(o);
+    });
+    const showPreview = () => {
+      const h = heirs.find(x => String(x.activity_id) === sel.value);
+      prev.textContent = h ? `${h.raw_name}: ${h.weight_pct}% -> ${Math.round((Number(h.weight_pct) + Number(act.weight_pct)) * 100) / 100}%` : '';
+    };
+    sel.addEventListener('change', showPreview); showPreview();
+    const done = v => { dlg.close(); dlg.remove(); resolve(v); };
+    dlg.querySelector('[data-yes]').addEventListener('click', () => done(sel.value));
+    dlg.querySelector('[data-no]').addEventListener('click', () => done(null));
+    dlg.addEventListener('cancel', e => { e.preventDefault(); done(null); });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    sel.focus();
+  });
+}
+
 function setLiveStatus(msg, isError, opts) {
   opts = opts || {};
   // Road-scoped messages (saves, validation/gating errors, load failures for
@@ -1093,12 +1134,55 @@ function addRoadFieldRows() {
   }).join('');
 }
 
+/* ---- Unit dropdown + "add new" (per activity row; Add Road and Add Activity) */
+let UNIT_CACHE = [];
+// Units that differ only by upper/lower case (Cum / CUM, Sqm / SQM, Rmt / RMT), plus the Sqmr / Sqmt
+// misspellings of Sqm, are listed once,
+// in "Capitalised" form when that spelling exists (else as stored: MT, CSqmt). Display only -
+// stored activity units are not rewritten.
+const UNIT_ALIASES = { sqmr: 'sqm', sqmt: 'sqm' };   // misspellings shown as Sqm
+const unitKey = u => { const k = String(u).trim().toLowerCase(); return UNIT_ALIASES[k] || k; };
+const knownUnits = () => {
+  const all = [...UNIT_CACHE, ...(LIVE_ROADS || []).flatMap(r => (r.activities || []).map(a => String(a.unit || '').trim()))].filter(Boolean);
+  const groups = new Map();
+  all.forEach(u => { const k = unitKey(u); if (!groups.has(k)) groups.set(k, new Set()); groups.get(k).add(u); });
+  return [...groups.entries()].map(([k, variants]) => {
+    const cap = k.charAt(0).toUpperCase() + k.slice(1);
+    return variants.has(cap) ? cap : [...variants][0];
+  }).sort((x, y) => x.localeCompare(y));
+};
+const unitOptionsHtml = () => `<option value="">Select unit...</option>`
+  + knownUnits().map(u => `<option value="${esc(u).replace(/"/g, '&quot;')}">${esc(u)}</option>`).join('')
+  + `<option value="${NEW_OPTION}">+ Add new unit...</option>`;
+const unitCellHtml = () => `<select data-aunit style="width:130px;">${unitOptionsHtml()}</select>
+  <input data-aunit-new type="text" placeholder="New unit" style="width:90px;" hidden autocomplete="off">`;
+// The unit to send: the chosen one, or the typed new one (re-using an existing unit's spelling if it matches).
+function unitValue(row) {
+  const sel = row.querySelector('[data-aunit]');
+  if (sel.value !== NEW_OPTION) return sel.value;
+  const typed = row.querySelector('[data-aunit-new]').value.trim();
+  return knownUnits().find(u => unitKey(u) === unitKey(typed)) || typed;
+}
+function onUnitChange(ev) {
+  if (!ev.target.matches('select[data-aunit]')) return;
+  const inp = ev.target.closest('td').querySelector('[data-aunit-new]');
+  inp.hidden = ev.target.value !== NEW_OPTION;
+  if (!inp.hidden) inp.focus(); else inp.value = '';
+}
+// Fetch every unit used anywhere, then top up the dropdowns already on screen.
+async function loadUnits(root) {
+  try { UNIT_CACHE = (await dbGet('/api/db/activity-units')).units || []; } catch (e) { return; }
+  (root || document).querySelectorAll('select[data-aunit]').forEach(sel => {
+    const cur = sel.value; sel.innerHTML = unitOptionsHtml(); sel.value = cur;
+  });
+}
+
 function addRoadActivityRowHtml(idx) {
   return `<tr data-activity-row="${idx}">
     <td><input data-aname type="text" placeholder="Activity name (required)"></td>
     <td><select data-amajor>${VALID_MAJORS.map(m => `<option value="${m}">${m || '(none)'}</option>`).join('')}</select></td>
     <td><input data-aweight type="number" step="0.01" min="0" max="100" value="0" style="width:70px;" disabled title="Weight % applies only to activities with a Major - choose a Major first"></td>
-    <td><input data-aunit type="text" style="width:70px;"></td>
+    <td>${unitCellHtml()}</td>
     <td><input data-aqty type="number" step="any" min="0" placeholder="Required" style="width:100px;"></td>
     <td><input data-astart type="date"></td>
     <td><input data-aend type="date"></td>
@@ -1138,6 +1222,7 @@ function renderAddRoadForm() {
     </div>
     <div id="addRoadStatus" class="hint" style="margin-top:8px;"></div>`;
   ADD_ROAD_ROW_SEQ = 1;
+  loadUnits(wrap);
   updateAddRoadWeightHint();
   wireAddRoadForm();
   checkRoadNo();              // validate the pre-filled number straight away
@@ -1194,6 +1279,7 @@ function wireAddRoadForm() {
   });
   wireComboForm(wrap);
   wrap.addEventListener('change', (ev) => {
+    onUnitChange(ev);
     if (ev.target.matches('[data-amajor]')) {
       const row = ev.target.closest('tr');
       syncWeightToMajor(ev.target, row.querySelector('[data-aweight]'));
@@ -1214,7 +1300,7 @@ function addRoadRows() {
       raw_name: v('[data-aname]'),
       major: row.querySelector('[data-amajor]').value || null,
       weight_raw: v('[data-aweight]'),
-      unit: v('[data-aunit]') || null,
+      unit: unitValue(row) || null,
       qty_raw: v('[data-aqty]'),
       start_date: v('[data-astart]') || null,
       end_date: v('[data-aend]') || null,
@@ -1497,6 +1583,7 @@ function liveActivityEditRow(road, a) {
       <td>${fmt(a.cum_qty)}</td><td>${a.pct == null ? '-' : a.pct + '%'}${overPlannedWarning(a)}</td>
       <td>
         <button class="btn-small btn-edit" data-edit-act="${a.activity_id}">Edit</button>
+        <button class="btn-small btn-danger" data-del-act="${a.activity_id}">Delete</button>
       </td>
     </tr>
     <tr class="live-activity-form" id="act-edit-${a.activity_id}" hidden>
@@ -1627,7 +1714,52 @@ function renderRoadActivitiesEditor(road, wrapEl) {
         <tbody>${acts.map(a => liveActivityEditRow(road, a)).join('') || '<tr><td colspan="8">No activities.</td></tr>'}</tbody>
       </table>
       </div>
+      <div class="no-print act-add-toggle-row"><button type="button" class="btn-small btn-save" data-act-add-toggle>+ Add Activity</button></div>
+      <div class="act-add-form act-add-wrap no-print" hidden></div>
     </div>`;
+  const rn = road.road_no;
+  // Panels close when the table rebuilds, so reopen this one afterwards.
+  const afterChange = async (msg) => {
+    EXPANDED_ROAD = rn;
+    await refreshLiveRoads();
+    await ensureRoadActivities(rn);
+    setLiveStatus(msg, false, { roadNo: rn });
+    uiToast(msg, 'ok');
+    const b = document.querySelector(`[data-road-editacts="${rn}"]`);
+    if (b) b.click();
+  };
+  wrapEl.querySelectorAll('[data-del-act]').forEach(btn => btn.addEventListener('click', async () => {
+    const act = acts.find(a => String(a.activity_id) === btn.dataset.delAct);
+    if (!act) return;
+    const weighted = Number(act.weight_pct) > 0;
+    if (weighted) {
+      // The weight must go somewhere so the road's weights still total 100.
+      const heirs = acts.filter(a => a !== act && a.major);
+      if (!heirs.length) { uiToast('No other activity with a Major can receive this weight.', 'error'); return; }
+      const target = await uiPickWeightTarget(act, heirs);
+      if (target) await doDelete(act, target, true);
+      return;
+    }
+    await doDelete(act, null, false);
+  }));
+  async function doDelete(act, target, confirmed) {
+    const n = Number(act.cum_qty) > 0 ? ' Its recorded progress entries will be deleted too.' : '';
+    if (!confirmed && !(await uiConfirm(`Delete activity "${act.raw_name}" from road ${rn}?${n} This cannot be undone.`,
+                          { okLabel: 'Delete', danger: true }))) return;
+    try {
+      const out = await dbSend('DELETE',
+        `/api/db/activities/${act.activity_id}` + (target ? `?transfer_weight_to=${target}` : ''));
+      await afterChange(`Activity "${act.raw_name}" deleted` + (out.entries_removed ? ` (${out.entries_removed} entries removed).` : '.'));
+    } catch (err) { uiToast('Could not delete: ' + err.message, 'error'); }
+  }
+  const addWrap = wrapEl.querySelector('.act-add-form');
+  wrapEl.querySelector('[data-act-add-toggle]').addEventListener('click', () => {
+    addWrap.hidden = !addWrap.hidden;
+    const t = wrapEl.querySelector('[data-act-add-toggle]');
+    if (t) t.style.display = addWrap.hidden ? '' : 'none';   // the form's own Cancel button closes it
+    if (!addWrap.hidden) renderAddActivityForm(road, acts, addWrap, afterChange);
+    else addWrap.innerHTML = '';
+  });
   wrapEl.querySelectorAll('[data-edit-act]').forEach(btn => btn.addEventListener('click', () => {
     const id = btn.dataset.editAct;
     const row = wrapEl.querySelector('#act-edit-' + id);
@@ -1637,6 +1769,107 @@ function renderRoadActivitiesEditor(road, wrapEl) {
       if (act) buildEditForm(row.querySelector('.edit-form'), 'activity', id, ACTIVITY_EDIT_FIELDS, act);
     }
   }));
+}
+
+// "+ Add Activity" form inside the Edit Activities panel: the same activity
+// table as Add Road (one row per new activity). If any new row carries weight,
+// the road's existing weights become editable so the total can be made 100
+// (BR-05); the server re-checks it.
+function renderAddActivityForm(road, acts, wrapEl, afterChange) {
+  const weighted = acts.filter(a => a.major);
+  let seq = 1;
+  wrapEl.innerHTML = `
+   <div class="act-add-card">
+    <h4>Add activities to Road ${esc(road.road_no)}</h4>
+    <p class="hint">Fields marked <span class="req">*</span> are required. Weight applies only to activities with a Major.</p>
+    <div class="table-scroll">
+    <table class="data-table">
+      <thead><tr><th>Activity <span class="req">*</span></th><th>Major</th><th>Weight %</th><th>Unit</th><th>Planned Qty <span class="req">*</span></th><th>Start</th><th>End</th><th></th></tr></thead>
+      <tbody class="aa-body">${addRoadActivityRowHtml(0)}</tbody>
+    </table>
+    </div>
+    <button type="button" class="btn-small aa-more">+ Add another row</button>
+    <div class="aa-rebal" hidden>
+      <p class="hint">Weights must total 100. Adjust the existing activities to make room:</p>
+      <div class="table-scroll"><table class="data-table sub">
+        <thead><tr><th>Existing activity</th><th>Major</th><th>New weight %</th></tr></thead>
+        <tbody>${weighted.map(a => `<tr><td>${esc(a.raw_name)}</td><td>${esc(a.major)}</td>
+          <td><input type="number" class="aa-rw" data-id="${a.activity_id}" value="${a.weight_pct}" min="0" max="100" step="0.01" style="width:80px;"></td></tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+    <div class="act-add-actions">
+      <button type="button" class="btn-small btn-save aa-save">Save Activities</button>
+      <button type="button" class="btn-small btn-cancel aa-cancel">Cancel</button>
+      <span class="hint aa-total"></span>
+    </div>
+   </div>`;
+  const q = sel => wrapEl.querySelector(sel);
+  const body = q('.aa-body');
+  const newRows = () => [...body.querySelectorAll('tr')].map(row => {
+    const v = sel => row.querySelector(sel).value.trim();
+    return { row, raw_name: v('[data-aname]'), major: row.querySelector('[data-amajor]').value || null,
+      weight: Number(v('[data-aweight]') || 0), unit: unitValue(row) || null, qty_raw: v('[data-aqty]'),
+      start_date: v('[data-astart]') || null, end_date: v('[data-aend]') || null };
+  });
+  const blank = a => !a.raw_name && !a.qty_raw && !a.unit && !a.start_date && !a.end_date && !a.weight;
+  const total = () => newRows().reduce((t, a) => t + a.weight, 0) +
+    [...wrapEl.querySelectorAll('.aa-rw')].reduce((t, i) => t + Number(i.value || 0), 0);
+  const refresh = () => {
+    const anyWeight = newRows().some(a => a.weight > 0);
+    q('.aa-rebal').hidden = !anyWeight;
+    const hint = q('.aa-total');
+    if (!anyWeight) { hint.textContent = ''; return; }
+    const t = Math.round(total() * 100) / 100, ok = Math.abs(t - 100) <= 0.01;
+    hint.textContent = `Weight total: ${t.toFixed(2)}%${ok ? ' - OK' : ' (must equal 100 to save)'}`;
+    hint.style.color = ok ? 'var(--ok)' : 'var(--accent)';
+  };
+  q('.aa-cancel').addEventListener('click', () => {
+    wrapEl.hidden = true; wrapEl.innerHTML = '';
+    const t = wrapEl.parentElement.querySelector('[data-act-add-toggle]');
+    if (t) t.style.display = '';
+  });
+  q('.aa-more').addEventListener('click', () => body.insertAdjacentHTML('beforeend', addRoadActivityRowHtml(seq++)));
+  wrapEl.addEventListener('click', ev => {
+    if (ev.target.dataset.removeActivityRow != null && body.children.length > 1) { ev.target.closest('tr').remove(); refresh(); }
+  });
+  wrapEl.addEventListener('input', refresh);
+  loadUnits(wrapEl);
+  wrapEl.addEventListener('change', ev => {
+    onUnitChange(ev);
+    if (ev.target.matches('[data-amajor]')) {
+      syncWeightToMajor(ev.target, ev.target.closest('tr').querySelector('[data-aweight]'));
+      refresh();
+    }
+  });
+  q('.aa-save').addEventListener('click', async () => {
+    const rows = newRows().filter(a => !blank(a));
+    const errs = [];
+    if (!rows.length) errs.push('Add at least one activity with a name and planned quantity.');
+    const names = new Set(acts.map(a => String(a.raw_name).toLowerCase()));
+    rows.forEach((a, i) => {
+      const tag = `Activity ${i + 1}`;
+      if (!a.raw_name) errs.push(`${tag}: name is required.`);
+      else if (names.has(a.raw_name.toLowerCase())) errs.push(`${tag}: "${a.raw_name}" already exists on this road or is entered twice.`);
+      else names.add(a.raw_name.toLowerCase());
+      if (a.qty_raw === '' || !(Number(a.qty_raw) > 0)) errs.push(`${tag}: planned quantity is required and must be more than 0.`);
+      if (a.weight < 0 || a.weight > 100) errs.push(`${tag}: weight must be between 0 and 100.`);
+      if (a.start_date && a.end_date && a.end_date < a.start_date) errs.push(`${tag}: end date is before its start date.`);
+    });
+    const anyWeight = rows.some(a => a.weight > 0);
+    if (anyWeight && Math.abs(total() - 100) > 0.01) errs.push(`Weights must total 100 (now ${total().toFixed(2)}).`);
+    if (errs.length) { uiToast(errs[0], 'error'); return; }
+    const payload = { activities: rows.map(a => ({ raw_name: a.raw_name, major: a.major, weight_pct: a.weight,
+      unit: a.unit, planned_qty: Number(a.qty_raw), start_date: a.start_date, end_date: a.end_date })) };
+    if (anyWeight) {
+      payload.rebalance = {};
+      wrapEl.querySelectorAll('.aa-rw').forEach(i => { payload.rebalance[i.dataset.id] = Number(i.value || 0); });
+    }
+    try {
+      await dbSend('POST', `/api/db/roads/${road.road_no}/activities`, payload);
+      await afterChange(`${rows.length} ${rows.length === 1 ? 'activity' : 'activities'} added.`);
+    } catch (err) { uiToast('Could not add: ' + (err.messages ? err.messages.join('; ') : err.message), 'error'); }
+  });
+  refresh();
 }
 
 // "Issue" panel: log a hindrance window (From/To) on this road. Saving shifts
@@ -1821,7 +2054,8 @@ async function renderRoadPyramid(road, wrapEl) {
     wrapEl.innerHTML = `
       <div class="detail-box">
         <p class="hint">Build activities stacked in sequence, foundation at the bottom. Each track fills by actual % complete.</p>
-        ${svg || `<p class="hint">${esc(data.note || 'No sequenced activities for this road.')}</p>`}
+        ${svg || `<p class="hint">${esc(data.note || 'No dated activities to chart for this road.')}</p>`}
+        ${csPyramidNote(data.path)}
       </div>`;
   } catch (err) {
     wrapEl.innerHTML = `<div class="detail-box"><p class="hint">Could not load the pyramid: ${esc(err.message)}</p></div>`;
@@ -2376,7 +2610,7 @@ function csGantt(path) {
     const x1 = X(day(p.start)), x2 = X(day(p.end));
     const overlapsPrev = i > 0 && day(p.start) < day(bars[i - 1].end);
     g += `<text x="${L - 8}" y="${y + rowH / 2 + 4}" font-size="10" fill="#1A1A1A" text-anchor="end">${esc((p.activity || '').slice(0, 30))}</text>` +
-         `<rect x="${x1.toFixed(1)}" y="${y}" width="${Math.max(x2 - x1, 2).toFixed(1)}" height="${rowH}" rx="3" fill="${overlapsPrev ? CHART_COL.planned : CHART_COL.actual}"><title>${esc(p.activity)}: ${fmtDate(p.start)} to ${fmtDate(p.end)}</title></rect>`;
+         `<rect x="${x1.toFixed(1)}" y="${y}" width="${Math.max(x2 - x1, 2).toFixed(1)}" height="${rowH}" rx="3" fill="${overlapsPrev ? CHART_COL.planned : CHART_COL.actual}"><title>${esc(p.activity)}: ${fmtDate(p.start)} to ${fmtDate(p.end)}${p.sequenced === false ? ' (outside the standard sequence)' : ''}</title></rect>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" class="gantt-svg" style="width:100%;height:auto;">${g}</svg>
     <div class="chart-legend"><span><i style="background:${CHART_COL.actual}"></i>Runs after predecessor finishes</span>` +
@@ -2390,6 +2624,13 @@ function csGantt(path) {
 // widest band; each band above it steps in narrower, forming a centred,
 // stepped pyramid. Bands sit flush on each other (no gaps). Each band is a
 // progress track that fills left-to-right by its actual % complete.
+// Activities the pyramid cannot draw (drain row is charted separately; bands need both dates).
+function csPyramidNote(path) {
+  const missing = (path || []).filter(p => !p.is_drain && !(p.start && p.end)).map(p => p.activity);
+  return missing.length
+    ? `<p class="hint">Not shown (no start/end date): ${missing.map(esc).join(', ')}. Add dates in Edit Activities to chart ${missing.length === 1 ? 'it' : 'them'}.</p>` : '';
+}
+
 function csPyramid(path) {
   const bands = (path || []).filter(p => p.start && p.end && !p.is_drain);
   if (!bands.length) return '';
@@ -2432,7 +2673,7 @@ async function loadPyramidChart(roadNo) {
   try {
     const data = await dbGet(`/api/db/roads/${roadNo}/critical-path`);
     wrap.innerHTML = data.path && data.path.length
-      ? csPyramid(data.path)
+      ? (csPyramid(data.path) || '') + csPyramidNote(data.path)
       : `<p class="hint">${esc(data.note || 'No critical path available for this road.')}</p>`;
   } catch (err) {
     wrap.innerHTML = `<p class="hint">Could not load chart: ${esc(err.message)}</p>`;
@@ -2461,7 +2702,7 @@ async function loadCriticalPath(roadNo) {
       <table class="data-table">
         <thead><tr><th>#</th><th>Activity</th><th>Start</th><th>End</th></tr></thead>
         <tbody>${data.path.map(p => `
-          <tr><td>${p.seq_no}</td><td class="wrap">${esc(p.activity)}</td>
+          <tr><td>${p.seq_no == null ? '-' : p.seq_no}</td><td class="wrap">${esc(p.activity)}</td>
             <td>${p.start ? fmtDate(p.start) : '-'}</td><td>${p.end ? fmtDate(p.end) : '-'}</td></tr>`).join('')}</tbody>
       </table>
       <p><strong>Total duration:</strong> ${fmt(data.duration_days)} days</p>`;

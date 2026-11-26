@@ -599,17 +599,23 @@ def bottlenecks(threshold_pct=15, stale_weeks=3):
 def critical_path(road_no):
     acts = db.query(
         "SELECT a.activity_id, a.raw_name, a.seq_no, a.start_date, a.end_date, a.planned_qty, "
-        "a.is_drain, COALESCE(SUM(w.actual_qty), 0) AS cum_qty "
+        "a.is_drain, a.sheet_row_order, COALESCE(SUM(w.actual_qty), 0) AS cum_qty "
         "FROM activity a LEFT JOIN weekly_entry w ON w.activity_id = a.activity_id "
-        "WHERE a.road_no = %s AND a.seq_no IS NOT NULL "
-        "GROUP BY a.activity_id, a.raw_name, a.seq_no, a.start_date, a.end_date, a.planned_qty, a.is_drain "
-        "ORDER BY a.seq_no", (road_no,)
+        "WHERE a.road_no = %s "
+        "GROUP BY a.activity_id, a.raw_name, a.seq_no, a.start_date, a.end_date, a.planned_qty, "
+        "a.is_drain, a.sheet_row_order "
+        # BR-03 chain first; activities outside the standard sequence (seq_no NULL, e.g. ones
+        # added in the app) follow it, by start date, so every activity on the road is charted.
+        "ORDER BY (a.seq_no IS NULL), a.seq_no, a.start_date, a.sheet_row_order", (road_no,)
     )
     if not acts:
         return {"road_no": road_no, "path": [], "duration_days": 0,
-                "note": "no sequenced activities for this road"}
+                "note": "no activities for this road"}
 
-    dated = [a for a in acts if a["start_date"] and a["end_date"]]
+    # Overlap flags describe the BR-03 dependency chain only; unsequenced activities have no
+    # known predecessor, so they are charted but never flagged.
+    dated_all = [a for a in acts if a["start_date"] and a["end_date"]]
+    dated = [a for a in dated_all if a["seq_no"] is not None]
     overlaps = []
     for prev, nxt in zip(dated, dated[1:]):
         if nxt["start_date"] < prev["end_date"]:
@@ -628,14 +634,14 @@ def critical_path(road_no):
                         f"(ends {prev['end_date'].strftime('%d-%m-%Y')}) - planned parallel working",
             })
 
-    duration_days = (max(a["end_date"] for a in dated) - min(a["start_date"] for a in dated)).days + 1 if dated else 0
+    duration_days = (max(a["end_date"] for a in dated_all) - min(a["start_date"] for a in dated_all)).days + 1 if dated_all else 0
 
     return {
         "road_no": road_no,
         "method": "Canonical build sequence is the dependency chain; "
                   "recorded dates used for duration only",
         "path": [{"activity": a["raw_name"], "seq_no": a["seq_no"],
-                  "is_drain": a["is_drain"],
+                  "is_drain": a["is_drain"], "sequenced": a["seq_no"] is not None,
                   "start": a["start_date"].isoformat() if a["start_date"] else None,
                   "end": a["end_date"].isoformat() if a["end_date"] else None,
                   "actual_pct": round(activity_pct(a["cum_qty"], a["planned_qty"], cap=100), 1)}

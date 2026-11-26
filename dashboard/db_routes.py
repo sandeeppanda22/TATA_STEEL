@@ -21,6 +21,11 @@ from dashboard import calculations as calc
 from dashboard import db
 from dashboard import live_feed
 
+try:   # canonical activity sequence (BR-03); absent only if scripts/ isn't deployed
+    from scripts import config as _cfg
+except ImportError:  # pragma: no cover
+    _cfg = None
+
 router = APIRouter(prefix="/api/db", tags=["db"])
 
 
@@ -86,6 +91,17 @@ def _check_date_order(start, end, what=""):
     "activity 'WMM': "."""
     if start and end and end < start:
         raise HTTPException(422, f"{what}end_date ({end}) is before start_date ({start})")
+
+
+def _canonical(raw_name, road_type=None):
+    """(canonical_name, seq_no) for an activity name, per BR-03. Unmapped names get
+    (name, None): they stay out of the critical path / sequence checks until ruled on."""
+    if _cfg is None:
+        return (raw_name or "").strip(), None
+    canon, mapped = _cfg.normalize(raw_name, road_type)
+    if mapped and canon in _cfg.ACTIVITY_SEQUENCE:
+        return canon, _cfg.ACTIVITY_SEQUENCE.index(canon) + 1
+    return canon, None
 
 
 class ActivityCreate(BaseModel):
@@ -196,6 +212,7 @@ def create_road(payload: RoadCreate):
                  payload.start_date, payload.end_date),
             )
             for i, a in enumerate(payload.activities, start=1):
+                canon, auto_seq = _canonical(a.raw_name, payload.road_type)
                 cur.execute(
                     """
                     INSERT INTO activity (road_no, seq_no, sheet_row_order, raw_name, major,
@@ -203,13 +220,22 @@ def create_road(payload: RoadCreate):
                         from_summary_only)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
                     """,
-                    (payload.road_no, a.seq_no, i, a.raw_name, a.major, a.weight_pct,
+                    (payload.road_no, a.seq_no if a.seq_no is not None else auto_seq, i,
+                     a.raw_name, a.major, a.weight_pct,
                      a.unit, a.planned_qty, a.start_date, a.end_date,
-                     a.raw_name.strip() == "RCC Drain"),
+                     canon == "RCC Drain"),
                 )
         conn.commit()
 
     return road_detail(payload.road_no)
+
+
+@router.get("/activity-units")
+def activity_units():
+    """Distinct units already used by any activity (feeds the Unit dropdowns)."""
+    rows = db.query("SELECT DISTINCT TRIM(unit) AS unit FROM activity "
+                    "WHERE unit IS NOT NULL AND TRIM(unit) <> '' ORDER BY 1")
+    return {"units": [r["unit"] for r in rows]}
 
 
 @router.get("/activities/{activity_id}/weekly")
@@ -822,6 +848,146 @@ def delete_road_issue(road_no: int, issue_id: int):
         cur.execute("DELETE FROM road_issue WHERE issue_id = %s", (issue_id,))
     return {"deleted": True, "issue_id": issue_id, "reverted_days": old["shift_days"],
             "activities_restored": old["activities_shifted"]}
+
+
+class ActivitiesAdd(BaseModel):
+    activities: list[ActivityCreate]
+    # Optional new weights for the road's OTHER activities, applied in the same
+    # transaction, so BR-05 (weights total 100) still holds after the add.
+    rebalance: dict[int, float] = {}
+
+
+def _check_weight_total(cur, road_no, what):
+    cur.execute("SELECT COALESCE(SUM(weight_pct),0) AS t FROM activity WHERE road_no = %s", (road_no,))
+    total = float(cur.fetchone()["t"])
+    if abs(total - 100.0) > 0.01:
+        raise HTTPException(
+            409, f"Road {road_no}'s activity weights must total 100; {what} would make it "
+                 f"{round(total, 2)}. Adjust the other activities' weights in the same change.")
+
+
+@router.post("/roads/{road_no}/activities", status_code=201)
+def add_activities(road_no: int, payload: ActivitiesAdd):
+    """Add one or more activities to an existing road in one transaction. BR-05
+    is enforced: after the add (and any `rebalance` of other activities'
+    weights) the road's weights must total 100. Weight-0 activities (no Major)
+    never disturb the total."""
+    if not payload.activities:
+        raise HTTPException(422, "Add at least one activity")
+    seen = set()
+    for a in payload.activities:
+        name = a.raw_name.strip()
+        if not name:
+            raise HTTPException(422, "Every activity needs a name")
+        if name.lower() in seen:
+            raise HTTPException(422, f"Duplicate activity name: {name!r}")
+        seen.add(name.lower())
+        if a.major is not None and a.major not in VALID_MAJORS:
+            raise HTTPException(422, f"major must be one of {sorted(VALID_MAJORS)} or null; got {a.major!r}")
+        if not 0 <= a.weight_pct <= 100:
+            raise HTTPException(422, f"Activity {name!r}: Weight % must be between 0 and 100")
+        if a.major is None and a.weight_pct:
+            raise HTTPException(422, f"Activity {name!r}: Weight % applies only to activities with a Major. "
+                                     "Choose a Major, or leave the weight at 0.")
+        if a.planned_qty <= 0:
+            raise HTTPException(422, f"Activity {name!r}: planned quantity is required and must be greater than 0")
+        _check_date_order(a.start_date, a.end_date, f"Activity {name!r}: ")
+    with _issue_tx() as cur:
+        _lock_road(cur, road_no)
+        cur.execute("SELECT road_no, road_type, start_date, end_date FROM road WHERE road_no = %s", (road_no,))
+        road = cur.fetchone()
+        if not road:
+            raise HTTPException(404, f"Road {road_no} not found")
+        for aid, w in payload.rebalance.items():
+            if not 0 <= w <= 100:
+                raise HTTPException(422, "Weight % must be between 0 and 100")
+            cur.execute("SELECT weight_pct, major FROM activity WHERE activity_id = %s AND road_no = %s",
+                        (aid, road_no))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(422, f"Activity {aid} is not on road {road_no}")
+            if row["major"] is None and w:
+                raise HTTPException(422, "Weight % applies only to activities with a Major.")
+            cur.execute("UPDATE activity SET weight_pct = %s WHERE activity_id = %s", (w, aid))
+            _log_dates(cur, "activity", aid, "weight_pct", float(row["weight_pct"]), float(w))
+        cur.execute("SELECT COALESCE(MAX(sheet_row_order),0) AS n FROM activity WHERE road_no = %s", (road_no,))
+        order = cur.fetchone()["n"]
+        ids = []
+        for a in payload.activities:
+            name = a.raw_name.strip()
+            cur.execute("SELECT 1 FROM activity WHERE road_no = %s AND raw_name = %s", (road_no, name))
+            if cur.fetchone():
+                raise HTTPException(409, f"Road {road_no} already has an activity named {name!r}")
+            order += 1
+            canon, auto_seq = _canonical(name, road["road_type"])
+            cur.execute(
+                """INSERT INTO activity (road_no, seq_no, sheet_row_order, raw_name, major, weight_pct,
+                       unit, planned_qty, start_date, end_date, is_drain, from_summary_only)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE) RETURNING activity_id""",
+                (road_no, a.seq_no if a.seq_no is not None else auto_seq, order, name, a.major,
+                 a.weight_pct, a.unit, a.planned_qty, a.start_date, a.end_date, canon == "RCC Drain"))
+            new_id = cur.fetchone()["activity_id"]
+            ids.append(new_id)
+            _log_dates(cur, "activity", new_id, "created", None, name)
+        # Keep the road's own window wide enough to contain its activities (it is only ever
+        # widened here; deleting an activity never shrinks it - road dates may be contractual).
+        starts = [a.start_date for a in payload.activities if a.start_date]
+        ends = [a.end_date for a in payload.activities if a.end_date]
+        if road["start_date"] and starts and min(starts) < road["start_date"]:
+            cur.execute("UPDATE road SET start_date = %s WHERE road_no = %s", (min(starts), road_no))
+            _log_dates(cur, "road", road_no, "start_date", road["start_date"], min(starts))
+        if road["end_date"] and ends and max(ends) > road["end_date"]:
+            cur.execute("UPDATE road SET end_date = %s WHERE road_no = %s", (max(ends), road_no))
+            _log_dates(cur, "road", road_no, "end_date", road["end_date"], max(ends))
+        _check_weight_total(cur, road_no, "this add")
+    return {"created": len(ids), "activity_ids": ids, "road_no": road_no}
+
+
+@router.delete("/activities/{activity_id}")
+def delete_activity(activity_id: int, transfer_weight_to: int | None = None):
+    """Delete an activity and (via ON DELETE CASCADE) all its weekly entries.
+    Its weight is handed to `transfer_weight_to` (another activity on the same
+    road) so BR-05 still totals 100; required when the weight is non-zero.
+    A road must keep at least one activity."""
+    with _issue_tx() as cur:
+        cur.execute("SELECT road_no, raw_name, weight_pct FROM activity WHERE activity_id = %s FOR UPDATE",
+                    (activity_id,))
+        act = cur.fetchone()
+        if not act:
+            raise HTTPException(404, f"Activity {activity_id} not found")
+        road_no = act["road_no"]
+        _lock_road(cur, road_no)
+        cur.execute("SELECT COUNT(*) AS n FROM activity WHERE road_no = %s", (road_no,))
+        if cur.fetchone()["n"] <= 1:
+            raise HTTPException(422, "A road must keep at least one activity.")
+        weight = float(act["weight_pct"] or 0)
+        if weight:
+            if transfer_weight_to is None or transfer_weight_to == activity_id:
+                raise HTTPException(
+                    409, f"This activity carries {weight:g}% weight. Choose another activity "
+                         "on the road to receive it so the weights still total 100.")
+            cur.execute("SELECT weight_pct, major FROM activity WHERE activity_id = %s AND road_no = %s",
+                        (transfer_weight_to, road_no))
+            tgt = cur.fetchone()
+            if not tgt:
+                raise HTTPException(422, f"Activity {transfer_weight_to} is not on road {road_no}")
+            if tgt["major"] is None:
+                raise HTTPException(422, "The receiving activity must have a Major to carry weight.")
+            new_w = float(tgt["weight_pct"]) + weight
+            cur.execute("UPDATE activity SET weight_pct = %s WHERE activity_id = %s",
+                        (new_w, transfer_weight_to))
+            _log_dates(cur, "activity", transfer_weight_to, "weight_pct",
+                       float(tgt["weight_pct"]), new_w)
+        cur.execute("SELECT COUNT(*) AS n FROM weekly_entry WHERE activity_id = %s", (activity_id,))
+        entries = cur.fetchone()["n"]
+        cur.execute("DELETE FROM activity WHERE activity_id = %s", (activity_id,))
+        # data-quality notes about this activity no longer describe anything
+        cur.execute("DELETE FROM data_issue WHERE road_no = %s AND activity_name = %s",
+                    (road_no, act["raw_name"]))
+        _log_dates(cur, "activity", activity_id, "deleted", act["raw_name"], None)
+        _check_weight_total(cur, road_no, "this delete")
+    return {"deleted": True, "activity_id": activity_id, "road_no": road_no,
+            "entries_removed": entries}
 
 
 class WeeklyEntryEdit(BaseModel):

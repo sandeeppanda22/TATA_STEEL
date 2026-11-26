@@ -794,3 +794,16 @@ table.weekly-table { margin-bottom: 10px; }
 /* Save / Cancel sit on the bottom edge of the grid row, side by side. */
 .form-grid .form-actions { flex-direction: row; gap: 8px; align-self: end; }
 .form-grid .form-actions .btn-small { height: 36px; padding: 0 18px; }
+
+/* "+ Add Activity" card inside a road's Edit Activities panel */
+.act-add-wrap { margin: 14px 0 18px; }
+.act-add-card { border: 1px solid var(--border); border-left: 4px solid var(--ok); border-radius: 6px;
+  background: #fff; padding: 14px 16px; }
+.act-add-card h4 { margin: 0 0 4px; font-size: 14px; color: var(--navy); }
+.act-add-card .hint { margin: 0 0 10px; }
+.act-add-card .table-scroll { margin-bottom: 8px; }
+.act-add-card .aa-rebal { margin: 12px 0 4px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.act-add-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px;
+  padding-top: 12px; border-top: 1px solid var(--border); }
+.act-add-actions .aa-total { margin-left: auto; font-weight: 600; }
+.act-add-toggle-row { margin-top: 12px; }
